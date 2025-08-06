@@ -57,7 +57,6 @@
             <h4>Access Features</h4>
             <p>Pay a one-time $12 fee to unlock the map and alerts.</p>
             <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
-            <button onclick="unlockContent()" class="btn btn-secondary mt-2">I've Paid - Unlock</button>
         </div>
 
         <!-- Premium Content (hidden until unlocked) -->
@@ -92,7 +91,16 @@
 
     <!-- Core Script -->
     <script>
-        function unlockContent() {
+        // Check for payment success redirect and unlock
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('paid')) {
+            localStorage.setItem('paid', 'true');
+            // Remove param from URL
+            history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Unlock if paid
+        if (localStorage.getItem('paid') === 'true') {
             document.getElementById('paywall').style.display = 'none';
             document.getElementById('premium-content').style.display = 'block';
             initApp();
