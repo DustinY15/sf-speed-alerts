@@ -9,8 +9,6 @@
     <!-- Leaflet for map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- AdSense Script -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5613464352561730" crossorigin="anonymous"></script>
     <!-- Custom Styles -->
     <style>
         body { background-color: #f8f9fa; font-family: 'Arial', sans-serif; margin: 0; padding: 0; overflow-x: hidden; color: white; font-weight: bold; }
@@ -29,6 +27,15 @@
         p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: white; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
         .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; } /* Dark overlay for readability */
         .nav-link { color: white !important; }
+        .header-img { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+        .paywall-img { display: block; margin: 0 auto 10px; max-width: 100%; height: auto; }
+        /* Responsive image switching */
+        .desktop-img { display: block; }
+        .mobile-img { display: none; }
+        @media (max-width: 768px) {
+            .desktop-img { display: none; }
+            .mobile-img { display: block; }
+        }
     </style>
     <!-- PWA Manifest -->
     <link rel="manifest" href="data:application/manifest+json,{
@@ -65,8 +72,9 @@
             </div>
         </nav>
 
-        <h1 class="text-center mb-4">San Francisco Speed Camera Alerts</h1>
-        <p class="text-center">Avoid the new SF speeding fines: get instant phone alerts via GPS for all 33 speed camera zones.</p>
+        <!-- Header PNG (responsive: desktop and mobile versions) -->
+        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Know before you're in a zone. Speed Warn. Avoid the new SF speeding fines: get instant phone alerts via gps for all 33 speed camera zones." class="header-img desktop-img mb-4">
+        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png" alt="Know before you're in a zone. Speed Warn. Avoid the new SF speeding fines: get instant phone alerts via gps for all 33 speed camera zones." class="header-img mobile-img mb-4">
 
         <!-- Paywall Message -->
         <div id="paywall" class="paywall mb-4">
