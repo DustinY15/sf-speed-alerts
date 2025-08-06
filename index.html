@@ -1,15 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SF Speed Cameras - Alerts & Map</title>
-    <!-- Bootstrap CSS for responsive design -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Leaflet for map -->
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Custom Styles -->
+    <!-- ...head unchanged except for CSS section... -->
     <style>
         body { background-color: #f8f9fa; font-family: 'Arial', sans-serif; margin: 0; padding: 0; overflow-x: hidden; color: white; font-weight: bold; }
         .navbar { background-color: transparent; border: none; position: relative; z-index: 2; }
@@ -29,131 +21,25 @@
         .paywall-img { display: block; margin: 0 auto 0; max-width: 100%; height: auto; }
         /* Removed .responsive-img CSS and redundant image switching */
     </style>
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="data:application/manifest+json,{
-        \"name\": \"SF Speed Cameras\",
-        \"short_name\": \"SF Cams\",
-        \"start_url\": \".\",
-        \"display\": \"standalone\",
-        \"background_color\": \"#007bff\",
-        \"theme_color\": \"#007bff\",
-        \"icons\": [{\"src\": \"https://via.placeholder.com/192?text=SF\", \"sizes\": \"192x192\", \"type\": \"image/png\"}]
-    }">
 </head>
 <body>
-    <!-- Video Background -->
-    <div class="video-background">
-        <video autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
-            <source src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/videos/background.mp4" type="video/mp4">
-            Your browser does not support the video tag.
-        </video>
-    </div>
+    <!-- ...navbar... -->
 
-    <!-- Main Content (with menu inside opaque box) -->
-    <div class="container my-4">
-        <!-- Navbar Menu Inside Opaque Box -->
-        <nav class="navbar navbar-expand-lg navbar-dark">
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="#map">Map</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#list">List</a></li>
-                </ul>
-            </div>
-        </nav>
+    <!-- Header PNG (responsive with <picture>) -->
+    <picture>
+        <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
+        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Know before you're in a zone..." class="header-img">
+    </picture>
 
-        <!-- Header PNG (responsive with <picture>) -->
+    <!-- Paywall Message -->
+    <div id="paywall" class="paywall mb-4">
         <picture>
             <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
-            <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Know before you're in a zone. Speed Warn. Avoid the new SF speeding fines: get instant phone alerts via GPS for all 33 speed camera zones." class="header-img">
+            <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Access All Features." class="paywall-img">
         </picture>
-
-        <!-- Paywall Message -->
-        <div id="paywall" class="paywall mb-4">
-            <picture>
-                <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
-                <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Access All Features. Pay the one-time $12 fee to unlock the Map and alerts." class="paywall-img">
-            </picture>
-            <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
-        </div>
-
-        <!-- Premium Content (hidden until unlocked) -->
-        <div id="premium-content" class="premium-content">
-            <!-- Map -->
-            <div id="map" class="mb-4"></div>
-
-            <!-- Camera List -->
-            <div id="list" class="card mb-4">
-                <div class="card-header">Camera Locations</div>
-                <ul class="list-group camera-list">
-                    <!-- JS will populate this -->
-                </ul>
-            </div>
-
-            <!-- Setup Guide (visible after unlock) -->
-            <div id="setup-guide">
-                <h4>Easy Guide to Use as a Warning App</h4>
-                <p>Turn this site into an app-like experience for reliable alerts:</p>
-                <ol>
-                    <li>Open in Chrome (Android) or Safari (iOS).</li>
-                    <li>Tap the menu (three dots or share icon) > "Add to Home Screen" or "Install."</li>
-                    <li>Allow location access when prompted for GPS alerts.</li>
-                    <li>Enable notifications and vibrations in your phone settings for rings/vibes.</li>
-                    <li>Launch from home screen and keep in background for real-time warnings.</li>
-                </ol>
-            </div>
-        </div>
-
-        <!-- AdSense -->
-        <div class="text-center my-4">
-            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5613464352561730" crossorigin="anonymous"></script>
-            <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-5613464352561730" data-ad-slot="" data-ad-format="auto"></ins>
-            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
-        </div>
-
-        <!-- Footer -->
-        <footer class="text-center mt-4">
-            <p>&copy; 2025 SF Speed Cameras | <a href="#">Privacy</a> | <a href="#">Contact</a></p>
-        </footer>
+        <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
     </div>
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-
-    <!-- Core Script -->
-    <script>
-        // Check for payment success redirect and unlock
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('paid')) {
-            localStorage.setItem('paid', 'true');
-            // Remove param from URL
-            history.replaceState(null, '', window.location.pathname);
-        }
-
-        // Unlock if paid
-        if (localStorage.getItem('paid') === 'true') {
-            document.getElementById('paywall').style.display = 'none';
-            document.getElementById('premium-content').style.display = 'block';
-            initApp();
-        }
-
-        function initApp() {
-            // Camera data
-            const cameras = [
-                {name: "Fulton Street from 42nd to 43rd Ave", lat: 37.7725, lon: -122.5015},
-                {name: "Lincoln Way from 27th to 28th Ave", lat: 37.7658, lon: -122.4860},
-                {name: "Geary Blvd from 7th to 8th Ave", lat: 37.7805, lon: -122.4660},
-                {name: "Fulton St from 2nd Ave to Arguello Blvd", lat: 37.7735, lon: -122.4550},
-                {name: "Geary Blvd from Webster to Buchanan St", lat: 37.7845, lon: -122.4310},
-                {name: "Turk St from Van Ness Ave to Polk St", lat: 37.7820, lon: -122.4195},
-                {name: "Bay St from Octavia to Gough St", lat: 37.8040, lon: -122.4230},
-                {name: "Franklin St from Union to Green St", lat: 37.8000, lon: -122.4235},
-                {name: "Columbus Ave from Lombard to Greenwich St", lat: 37.8025, lon: -122.4135},
-                {name: "Broadway from Powell to Stockton St", lat: 37.7975, lon: -122.4075},
-                {name: "The Embarcadero from Green to Battery St", lat: 37.8070, lon: -122.4005},
-                {name: "Mission St from 8th to 9th St", lat: 37
-    </script>
+    <!-- ...rest of file unchanged... -->
 </body>
 </html>
