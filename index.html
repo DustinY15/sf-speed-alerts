@@ -12,8 +12,8 @@
     <!-- Custom Styles -->
     <style>
         body { background-color: #f8f9fa; font-family: 'Arial', sans-serif; margin: 0; padding: 0; overflow-x: hidden; color: white; font-weight: bold; }
-        .navbar { background-color: transparent; border: none; position: relative; z-index: 2; } /* Transparent navbar */
-        #map { height: 60vh; border: 1px solid #ddd; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8); } /* Semi-transparent content */
+        .navbar { background-color: transparent; border: none; position: relative; z-index: 2; }
+        #map { height: 60vh; border: 1px solid #ddd; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8); }
         .camera-list { max-height: 200px; overflow-y: auto; }
         .paywall { text-align: center; padding: 0; background: transparent; border: none; border-radius: 8px; color: white; }
         .premium-content { display: none; }
@@ -21,19 +21,13 @@
         .video-background video { min-width: 100%; min-height: 100%; object-fit: cover; }
         #setup-guide { margin-top: 20px; padding: 15px; background: rgba(0, 0, 0, 0.7); border-radius: 8px; color: white; }
         @media (max-width: 768px) { #map { height: 50vh; } }
-        /* Font treatments - Bold white text with specified styles */
-        h1 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 36px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; } /* Bigger type */
+        h1 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 36px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; }
         p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: white; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
-        .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; min-height: 80vh; } /* Center content vertically */
+        .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; min-height: 80vh; }
         .nav-link { color: white !important; }
         .header-img { display: block; margin: 0 auto; max-width: 100%; height: auto; }
-        .paywall-img { display: block; margin: 0 auto 0; max-width: 100%; height: auto; } /* No gap below image */
-        /* Responsive image switching */
-        .responsive-img { display: block; margin: 0 auto; max-width: 100%; height: auto; }
-        @media (max-width: 576px) { /* Adjusted to 576px for better mobile detection */
-            .responsive-img[src*="/Copyblockdesktop.png"] { display: none; }
-            .responsive-img[src*="/Copyblockmobile.png"] { display: block; }
-        }
+        .paywall-img { display: block; margin: 0 auto 0; max-width: 100%; height: auto; }
+        /* Removed .responsive-img CSS and redundant image switching */
     </style>
     <!-- PWA Manifest -->
     <link rel="manifest" href="data:application/manifest+json,{
@@ -70,13 +64,18 @@
             </div>
         </nav>
 
-        <!-- Header PNG (responsive: single img with media query switch) -->
-        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Know before you're in a zone. Speed Warn. Avoid the new SF speeding fines: get instant phone alerts via GPS for all 33 speed camera zones." class="header-img responsive-img">
-        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png" alt="Know before you're in a zone. Speed Warn. Avoid the new SF speeding fines: get instant phone alerts via GPS for all 33 speed camera zones." class="header-img responsive-img">
+        <!-- Header PNG (responsive with <picture>) -->
+        <picture>
+            <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
+            <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Know before you're in a zone. Speed Warn. Avoid the new SF speeding fines: get instant phone alerts via GPS for all 33 speed camera zones." class="header-img">
+        </picture>
 
         <!-- Paywall Message -->
         <div id="paywall" class="paywall mb-4">
-            <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Access All Features. Pay the one-time $12 fee to unlock the Map and alerts." class="paywall-img responsive-img">
+            <picture>
+                <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
+                <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Access All Features. Pay the one-time $12 fee to unlock the Map and alerts." class="paywall-img">
+            </picture>
             <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
         </div>
 
@@ -155,3 +154,6 @@
                 {name: "Broadway from Powell to Stockton St", lat: 37.7975, lon: -122.4075},
                 {name: "The Embarcadero from Green to Battery St", lat: 37.8070, lon: -122.4005},
                 {name: "Mission St from 8th to 9th St", lat: 37
+    </script>
+</body>
+</html>
