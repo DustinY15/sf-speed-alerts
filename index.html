@@ -1,11 +1,19 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <!-- ...head unchanged except for CSS section... -->
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SF Speed Cameras - Alerts & Map</title>
+    <!-- Bootstrap CSS for responsive design -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Leaflet for map -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Custom Styles -->
     <style>
         body { background-color: #f8f9fa; font-family: 'Arial', sans-serif; margin: 0; padding: 0; overflow-x: hidden; color: white; font-weight: bold; }
-        .navbar { background-color: transparent; border: none; position: relative; z-index: 2; }
-        #map { height: 60vh; border: 1px solid #ddd; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8); }
+        .navbar { background-color: transparent; border: none; position: relative; z-index: 2; } /* Transparent navbar */
+        #map { height: 60vh; border: 1px solid #ddd; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8); } /* Semi-transparent content */
         .camera-list { max-height: 200px; overflow-y: auto; }
         .paywall { text-align: center; padding: 0; background: transparent; border: none; border-radius: 8px; color: white; }
         .premium-content { display: none; }
@@ -13,33 +21,222 @@
         .video-background video { min-width: 100%; min-height: 100%; object-fit: cover; }
         #setup-guide { margin-top: 20px; padding: 15px; background: rgba(0, 0, 0, 0.7); border-radius: 8px; color: white; }
         @media (max-width: 768px) { #map { height: 50vh; } }
-        h1 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 36px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; }
+        /* Font treatments - Bold white text with specified styles */
+        h1 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 36px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; } /* Bigger type */
         p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: white; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
-        .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; min-height: 80vh; }
+        .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; display: flex; flex-direction: column; justify-content: center; min-height: 80vh; } /* Center content vertically */
         .nav-link { color: white !important; }
         .header-img { display: block; margin: 0 auto; max-width: 100%; height: auto; }
-        .paywall-img { display: block; margin: 0 auto 0; max-width: 100%; height: auto; }
-        /* Removed .responsive-img CSS and redundant image switching */
+        .paywall-img { display: block; margin: 0 auto 0; max-width: 100%; height: auto; } /* No gap below image */
+        /* Overlay image floats above content, does not displace elements */
+        .overlay-img {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .overlay-img img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        /* Remove old responsive-img hiding rules */
     </style>
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/manifest+json,{
+        \"name\": \"SF Speed Cameras\",
+        \"short_name\": \"SF Cams\",
+        \"start_url\": \".\",
+        \"display\": \"standalone\",
+        \"background_color\": \"#007bff\",
+        \"theme_color\": \"#007bff\",
+        \"icons\": [{\"src\": \"https://via.placeholder.com/192?text=SF\", \"sizes\": \"192x192\", \"type\": \"image/png\"}]
+    }">
 </head>
 <body>
-    <!-- ...navbar... -->
-
-    <!-- Header PNG (responsive with <picture>) -->
-    <picture>
+    <!-- Floating Overlay PNG (responsive desktop/mobile) -->
+    <picture class="overlay-img">
         <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
-        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Know before you're in a zone..." class="header-img">
+        <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Overlay" />
     </picture>
 
-    <!-- Paywall Message -->
-    <div id="paywall" class="paywall mb-4">
-        <picture>
-            <source media="(max-width: 576px)" srcset="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockmobile.png">
-            <img src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/images/Copyblockdesktop.png" alt="Access All Features." class="paywall-img">
-        </picture>
-        <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
+    <!-- Video Background -->
+    <div class="video-background">
+        <video autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
+            <source src="https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/videos/background.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
     </div>
 
-    <!-- ...rest of file unchanged... -->
+    <!-- Main Content (with menu inside opaque box) -->
+    <div class="container my-4">
+        <!-- Navbar Menu Inside Opaque Box -->
+        <nav class="navbar navbar-expand-lg navbar-dark">
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="#map">Map</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#list">List</a></li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- REMOVE old header PNG images -->
+        <!-- Paywall Message -->
+        <div id="paywall" class="paywall mb-4">
+            <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
+        </div>
+
+        <!-- Premium Content (hidden until unlocked) -->
+        <div id="premium-content" class="premium-content">
+            <!-- Map -->
+            <div id="map" class="mb-4"></div>
+
+            <!-- Camera List -->
+            <div id="list" class="card mb-4">
+                <div class="card-header">Camera Locations</div>
+                <ul class="list-group camera-list">
+                    <!-- JS will populate this -->
+                </ul>
+            </div>
+
+            <!-- Setup Guide (visible after unlock) -->
+            <div id="setup-guide">
+                <h4>Easy Guide to Use as a Warning App</h4>
+                <p>Turn this site into an app-like experience for reliable alerts:</p>
+                <ol>
+                    <li>Open in Chrome (Android) or Safari (iOS).</li>
+                    <li>Tap the menu (three dots or share icon) > "Add to Home Screen" or "Install."</li>
+                    <li>Allow location access when prompted for GPS alerts.</li>
+                    <li>Enable notifications and vibrations in your phone settings for rings/vibes.</li>
+                    <li>Launch from home screen and keep in background for real-time warnings.</li>
+                </ol>
+            </div>
+        </div>
+
+        <!-- AdSense -->
+        <div class="text-center my-4">
+            <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5613464352561730" crossorigin="anonymous"></script>
+            <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-5613464352561730" data-ad-slot="" data-ad-format="auto"></ins>
+            <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+        </div>
+
+        <!-- Footer -->
+        <footer class="text-center mt-4">
+            <p>&copy; 2025 SF Speed Cameras | <a href="#">Privacy</a> | <a href="#">Contact</a></p>
+        </footer>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+    <!-- Core Script -->
+    <script>
+        // Check for payment success redirect and unlock
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('paid')) {
+            localStorage.setItem('paid', 'true');
+            // Remove param from URL
+            history.replaceState(null, '', window.location.pathname);
+        }
+
+        // Unlock if paid
+        if (localStorage.getItem('paid') === 'true') {
+            document.getElementById('paywall').style.display = 'none';
+            document.getElementById('premium-content').style.display = 'block';
+            initApp();
+        }
+
+        function initApp() {
+            // Camera data
+            const cameras = [
+                {name: "Fulton Street from 42nd to 43rd Ave", lat: 37.7725, lon: -122.5015},
+                {name: "Lincoln Way from 27th to 28th Ave", lat: 37.7658, lon: -122.4860},
+                {name: "Geary Blvd from 7th to 8th Ave", lat: 37.7805, lon: -122.4660},
+                {name: "Fulton St from 2nd Ave to Arguello Blvd", lat: 37.7735, lon: -122.4550},
+                {name: "Geary Blvd from Webster to Buchanan St", lat: 37.7845, lon: -122.4310},
+                {name: "Turk St from Van Ness Ave to Polk St", lat: 37.7820, lon: -122.4195},
+                {name: "Bay St from Octavia to Gough St", lat: 37.8040, lon: -122.4230},
+                {name: "Franklin St from Union to Green St", lat: 37.8000, lon: -122.4235},
+                {name: "Columbus Ave from Lombard to Greenwich St", lat: 37.8025, lon: -122.4135},
+                {name: "Broadway from Powell to Stockton St", lat: 37.7975, lon: -122.4075},
+                {name: "The Embarcadero from Green to Battery St", lat: 37.8070, lon: -122.4005},
+                {name: "Mission St from 8th to 9th St", lat: 37.7740, lon: -122.4110},
+                {name: "10th St from Harrison to Folsom St", lat: 37.7715, lon: -122.4115},
+                {name: "9th St from Bryant to Harrison St", lat: 37.7725, lon: -122.4090},
+                {name: "7th St from Harrison to Folsom St", lat: 37.7745, lon: -122.4065},
+                {name: "Harrison St from 4th to 5th St", lat: 37.7795, lon: -122.4015},
+                {name: "Bryant St from 2nd to 3rd St", lat: 37.7820, lon: -122.3965},
+                {name: "King St (EB only) from 4th to 5th St", lat: 37.7775, lon: -122.3940},
+                {name: "Market St from Danvers to Douglass St", lat: 37.7615, lon: -122.4320},
+                {name: "Guerrero St from 19th to 20th St", lat: 37.7590, lon: -122.4230},
+                {name: "16th St from Bryant St to Potrero Ave", lat: 37.7650, lon: -122.4075},
+                {name: "San Jose Ave from 29th to 30th St", lat: 37.7435, lon: -122.4235},
+                {name: "Cesar Chavez St from Folsom to Harrison St", lat: 37.7480, lon: -122.4035},
+                {name: "Cesar Chavez St from Indiana to Tennessee St", lat: 37.7505, lon: -122.3900},
+                {name: "3rd St (NB only) from Key to Jamestown Ave", lat: 37.7275, lon: -122.3885},
+                {name: "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave", lat: 37.7100, lon: -122.3990},
+                {name: "Geneva Ave from Prague St to Brookdale Ave", lat: 37.7130, lon: -122.4405},
+                {name: "Mission St from Ottawa Ave to Allison St", lat: 37.7145, lon: -122.4400},
+                {name: "Alemany Blvd from Farragut to Naglee Ave", lat: 37.7320, lon: -122.4425},
+                {name: "Ocean Ave from Frida Kahlo Way to Howth St", lat: 37.7235, lon: -122.4525},
+                {name: "San Jose Ave from Santa Ynez to Ocean Ave", lat: 37.7280, lon: -122.4430},
+                {name: "Monterey Blvd from Edna to Congo St", lat: 37.7315, lon: -122.4650},
+                {name: "Sloat Blvd from 41st Ave to Skyline Blvd", lat: 37.7355, lon: -122.4980}
+            ];
+
+            // Initialize map
+            const map = L.map('map').setView([37.7749, -122.4194], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            cameras.forEach(cam => {
+                L.marker([cam.lat, cam.lon]).addTo(map).bindPopup(cam.name + '<br>Slow down!');
+            });
+
+            // Populate list
+            const list = document.querySelector('.camera-list');
+            cameras.forEach(cam => {
+                const li = document.createElement('li');
+                li.classList.add('list-group-item');
+                li.textContent = cam.name;
+                li.addEventListener('click', () => map.setView([cam.lat, cam.lon], 15));
+                list.appendChild(li);
+            });
+
+            // Alerts
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(position => {
+                    cameras.forEach(cam => {
+                        const dist = getDistance(position.coords.latitude, position.coords.longitude, cam.lat, cam.lon);
+                        if (dist < 0.5) {
+                            alert(`Approaching: ${cam.name}`);
+                            if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                        }
+                    });
+                }, { enableHighAccuracy: true });
+            }
+
+            function getDistance(lat1, lon1, lat2, lon2) {
+                const R = 6371;
+                const dLat = deg2rad(lat2 - lat1);
+                const dLon = deg2rad(lon2 - lon1);
+                const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                return R * c;
+            }
+
+            function deg2rad(deg) {
+                return deg * (Math.PI / 180);
+            }
+
+            // PWA Service Worker
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('data:application/javascript, self.addEventListener("install", e => e.waitUntil(caches.open("sf-alerts").then(cache => cache.addAll(["/"])))); self.addEventListener("fetch", e => e.respondWith(caches.match(e.request).then(res => res || fetch(e.request))));');
+            }
+        }
+    </script>
 </body>
 </html>
