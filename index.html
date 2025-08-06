@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SF Speed Camera Alerts</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
+        #map { height: 80vh; }
+        h1 { text-align: center; }
+    </style>
+    <!-- Make it a PWA for "app-like" feel -->
+    <link rel="manifest" href="data:application/manifest+json,{
+        \"name\": \"SF Speed Alerts\",
+        \"short_name\": \"SF Alerts\",
+        \"start_url\": \".\",
+        \"display\": \"standalone\",
+        \"background_color\": \"#fff\",
+        \"theme_color\": \"#007bff\",
+        \"icons\": [{\"src\": \"https://via.placeholder.com/192?text=SF\", \"sizes\": \"192x192\", \"type\": \"image/png\"}]
+    }">
+</head>
+<body>
+    <h1>SF Speed Camera Map & Alerts</h1>
+    <p>Open on your phone, allow location access for alerts. Approaching a camera? Get a notification!</p>
+    <div id="map"></div>
+
+    <!-- Monetization: Paste your Google AdSense code here (get from ads.google.com) -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=your-client-id" crossorigin="anonymous"></script>
+    <ins class="adsbygoogle" style="display:block" data-ad-client="your-client-id" data-ad-slot="your-ad-slot" data-ad-format="auto"></ins>
+    <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+
+    <!-- Optional: Add a PayPal donate button (get code from paypal.com/buttons) -->
+    <!-- Example: <form action="https://www.paypal.com/donate" method="post" target="_top"><input type="hidden" name="hosted_button_id" value="YOUR_BUTTON_ID" /><input type="image" src="https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif" border="0" name="submit" title="PayPal - The safer, easier way to pay online!" alt="Donate with PayPal button" /></form> -->
+
+    <script>
+        // Camera locations (lat/long approximate; fine-tune if needed)
+        const cameras = [
+            {name: "Fulton Street from 42nd to 43rd Ave", lat: 37.7725, lon: -122.5015},
+            {name: "Lincoln Way from 27th to 28th Ave", lat: 37.7658, lon: -122.4860},
+            {name: "Geary Blvd from 7th to 8th Ave", lat: 37.7805, lon: -122.4660},
+            {name: "Fulton St from 2nd Ave to Arguello Blvd", lat: 37.7735, lon: -122.4550},
+            {name: "Geary Blvd from Webster to Buchanan St", lat: 37.7845, lon: -122.4310},
+            {name: "Turk St from Van Ness Ave to Polk St", lat: 37.7820, lon: -122.4195},
+            {name: "Bay St from Octavia to Gough St", lat: 37.8040, lon: -122.4230},
+            {name: "Franklin St from Union to Green St", lat: 37.8000, lon: -122.4235},
+            {name: "Columbus Ave from Lombard to Greenwich St", lat: 37.8025, lon: -122.4135},
+            {name: "Broadway from Powell to Stockton St", lat: 37.7975, lon: -122.4075},
+            {name: "The Embarcadero from Green to Battery St", lat: 37.8070, lon: -122.4005},
+            {name: "Mission St from 8th to 9th St", lat: 37.7740, lon: -122.4110},
+            {name: "10th St from Harrison to Folsom St", lat: 37.7715, lon: -122.4115},
+            {name: "9th St from Bryant to Harrison St", lat: 37.7725, lon: -122.4090},
+            {name: "7th St from Harrison to Folsom St", lat: 37.7745, lon: -122.4065},
+            {name: "Harrison St from 4th to 5th St", lat: 37.7795, lon: -122.4015},
+            {name: "Bryant St from 2nd to 3rd St", lat: 37.7820, lon: -122.3965},
+            {name: "King St (EB only) from 4th to 5th St", lat: 37.7775, lon: -122.3940},
+            {name: "Market St from Danvers to Douglass St", lat: 37.7615, lon: -122.4320},
+            {name: "Guerrero St from 19th to 20th St", lat: 37.7590, lon: -122.4230},
+            {name: "16th St from Bryant St to Potrero Ave", lat: 37.7650, lon: -122.4075},
+            {name: "San Jose Ave from 29th to 30th St", lat: 37.7435, lon: -122.4235},
+            {name: "Cesar Chavez St from Folsom to Harrison St", lat: 37.7480, lon: -122.4035},
+            {name: "Cesar Chavez St from Indiana to Tennessee St", lat: 37.7505, lon: -122.3900},
+            {name: "3rd St (NB only) from Key to Jamestown Ave", lat: 37.7275, lon: -122.3885},
+            {name: "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave", lat: 37.7100, lon: -122.3990},
+            {name: "Geneva Ave from Prague St to Brookdale Ave", lat: 37.7130, lon: -122.4405},
+            {name: "Mission St from Ottawa Ave to Allison St", lat: 37.7145, lon: -122.4400},
+            {name: "Alemany Blvd from Farragut to Naglee Ave", lat: 37.7320, lon: -122.4425},
+            {name: "Ocean Ave from Frida Kahlo Way to Howth St", lat: 37.7235, lon: -122.4525},
+            {name: "San Jose Ave from Santa Ynez to Ocean Ave", lat: 37.7280, lon: -122.4430},
+            {name: "Monterey Blvd from Edna to Congo St", lat: 37.7315, lon: -122.4650},
+            {name: "Sloat Blvd from 41st Ave to Skyline Blvd", lat: 37.7355, lon: -122.4980}
+        ];
+
+        // Initialize map
+        const map = L.map('map').setView([37.7749, -122.4194], 12); // SF center
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Add markers
+        cameras.forEach(cam => {
+            L.marker([cam.lat, cam.lon]).addTo(map).bindPopup(cam.name + '<br>Speed camera - Slow down!');
+        });
+
+        // Proximity alerts
+        if (navigator.geolocation) {
+            navigator.geolocation.watchPosition(position => {
+                cameras.forEach(cam => {
+                    const dist = getDistance(position.coords.latitude, position.coords.longitude, cam.lat, cam.lon);
+                    if (dist < 0.5) { // ~0.5 km / 0.3 miles
+                        alert(`Approaching speed camera: ${cam.name}`);
+                        if (navigator.vibrate) navigator.vibrate([200, 100, 200]); // Vibrate if supported
+                    }
+                });
+            }, { enableHighAccuracy: true });
+        }
+
+        function getDistance(lat1, lon1, lat2, lon2) {
+            const R = 6371; // Earth radius in km
+            const dLat = deg2rad(lat2 - lat1);
+            const dLon = deg2rad(lon2 - lon1);
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) * Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+            return R * c;
+        }
+
+        function deg2rad(deg) {
+            return deg * (Math.PI / 180);
+        }
+
+        // PWA service worker for offline-ish use
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('data:application/javascript, self.addEventListener("install", e => e.waitUntil(caches.open("sf-alerts").then(cache => cache.addAll(["/"])))); self.addEventListener("fetch", e => e.respondWith(caches.match(e.request).then(res => res || fetch(e.request))));');
+        }
+    </script>
+</body>
+</html>
