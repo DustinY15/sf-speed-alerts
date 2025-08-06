@@ -15,16 +15,16 @@
         .navbar { background-color: rgba(0, 123, 255, 0.8); } /* Semi-transparent for video visibility */
         #map { height: 60vh; border: 1px solid #ddd; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8); } /* Semi-transparent content */
         .camera-list { max-height: 200px; overflow-y: auto; }
-        .paywall { text-align: center; padding: 20px; background: rgba(255, 243, 205, 0.8); border: 1px solid #ffeeba; border-radius: 8px; }
+        .paywall { text-align: center; padding: 20px; background: rgba(255, 243, 205, 0.8); border: 1px solid #ffeeba; border-radius: 8px; color: #222; }
         .premium-content { display: none; }
         .video-background { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: -1; }
         .video-background video { min-width: 100%; min-height: 100%; object-fit: cover; }
         @media (max-width: 768px) { #map { height: 50vh; } }
-        /* Font treatments */
-        h1 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 24px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: #222; }
-        p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: #666666; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
-        .example .ilt h2 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 24px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: #222; }
-        .example .ilt p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: #666666; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
+        /* Font treatments - Bold white text with specified styles */
+        h1, h2, h4 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 24px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; }
+        p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: white; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
+        .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; } /* Dark overlay for readability */
+        .navbar-brand, .nav-link { color: white !important; }
     </style>
     <!-- PWA Manifest -->
     <link rel="manifest" href="data:application/manifest+json,{
@@ -64,12 +64,6 @@
 
     <!-- Main Content -->
     <div class="container my-4">
-        <div class="example">
-            <div class="ilt">
-                <h2>Sunday Type: Ale Paul type</h2>
-                <p>In the Beginning</p>
-            </div>
-        </div>
         <h1 class="text-center mb-4">San Francisco Speed Camera Alerts</h1>
         <p class="text-center">Interactive map of 33 speed cameras. Allow location for real-time alerts!</p>
 
