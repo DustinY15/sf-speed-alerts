@@ -9,22 +9,26 @@
     <!-- Leaflet for map -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- AdSense Script -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5613464352561730" crossorigin="anonymous"></script>
     <!-- Custom Styles -->
     <style>
         body { background-color: #f8f9fa; font-family: 'Arial', sans-serif; margin: 0; padding: 0; overflow-x: hidden; color: white; font-weight: bold; }
-        .navbar { background-color: rgba(0, 123, 255, 0.8); } /* Semi-transparent for video visibility */
+        .navbar { background-color: transparent; border: none; position: relative; z-index: 2; } /* Transparent navbar */
         #map { height: 60vh; border: 1px solid #ddd; border-radius: 8px; background-color: rgba(255, 255, 255, 0.8); } /* Semi-transparent content */
         .camera-list { max-height: 200px; overflow-y: auto; }
-        .paywall { text-align: center; padding: 20px; background: rgba(255, 243, 205, 0.8); border: 1px solid #ffeeba; border-radius: 8px; color: #222; }
+        .paywall { text-align: center; padding: 20px; background: transparent; border: none; border-radius: 8px; color: white; }
+        .paywall h4 { color: white; }
         .premium-content { display: none; }
         .video-background { position: fixed; top: 0; left: 0; width: 100%; height: 100%; overflow: hidden; z-index: -1; }
         .video-background video { min-width: 100%; min-height: 100%; object-fit: cover; }
+        #setup-guide { margin-top: 20px; padding: 15px; background: rgba(0, 0, 0, 0.7); border-radius: 8px; color: white; }
         @media (max-width: 768px) { #map { height: 50vh; } }
         /* Font treatments - Bold white text with specified styles */
-        h1, h2, h4 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 24px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; }
+        h1 { font-family: Georgia, "Times New Roman", Times, serif; font-size: 36px; margin-top: 5px; margin-bottom: 0px; text-align: center; font-weight: normal; color: white; } /* Bigger type */
         p { font-family: "Lucida Grande", Tahoma; font-size: 10px; font-weight: lighter; font-variant: normal; text-transform: uppercase; color: white; margin-top: 10px; text-align: center!important; letter-spacing: 0.3em; }
         .container { position: relative; z-index: 1; background: rgba(0, 0, 0, 0.5); padding: 20px; border-radius: 8px; } /* Dark overlay for readability */
-        .navbar-brand, .nav-link { color: white !important; }
+        .nav-link { color: white !important; }
     </style>
     <!-- PWA Manifest -->
     <link rel="manifest" href="data:application/manifest+json,{
@@ -46,10 +50,10 @@
         </video>
     </div>
 
-    <!-- Navbar -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="#">SF Speed Cameras</a>
+    <!-- Main Content (with menu inside opaque box) -->
+    <div class="container my-4">
+        <!-- Navbar Menu Inside Opaque Box -->
+        <nav class="navbar navbar-expand-lg navbar-dark">
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -59,17 +63,14 @@
                     <li class="nav-item"><a class="nav-link" href="#list">List</a></li>
                 </ul>
             </div>
-        </div>
-    </nav>
+        </nav>
 
-    <!-- Main Content -->
-    <div class="container my-4">
         <h1 class="text-center mb-4">San Francisco Speed Camera Alerts</h1>
-        <p class="text-center">Interactive map of 33 speed cameras. Allow location for real-time alerts!</p>
+        <p class="text-center">Avoid the new SF speeding fines: get instant phone alerts via GPS for all 33 speed camera zones.</p>
 
         <!-- Paywall Message -->
         <div id="paywall" class="paywall mb-4">
-            <h4>Access Features</h4>
+            <h4>Access All Features</h4>
             <p>Pay a one-time $12 fee to unlock the map and alerts.</p>
             <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
         </div>
@@ -85,6 +86,19 @@
                 <ul class="list-group camera-list">
                     <!-- JS will populate this -->
                 </ul>
+            </div>
+
+            <!-- Setup Guide (visible after unlock) -->
+            <div id="setup-guide">
+                <h4>Easy Guide to Use as a Warning App</h4>
+                <p>Turn this site into an app-like experience for reliable alerts:</p>
+                <ol>
+                    <li>Open in Chrome (Android) or Safari (iOS).</li>
+                    <li>Tap the menu (three dots or share icon) > "Add to Home Screen" or "Install."</li>
+                    <li>Allow location access when prompted for GPS alerts.</li>
+                    <li>Enable notifications and vibrations in your phone settings for rings/vibes.</li>
+                    <li>Launch from home screen and keep in background for real-time warnings.</li>
+                </ol>
             </div>
         </div>
 
