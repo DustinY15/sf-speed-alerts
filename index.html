@@ -12,11 +12,11 @@
 
 <style>
   :root{
-    /* PNG stays put; content sits below it (smaller = higher content) */
-    --paid-offset-mobile: 260px;   /* was 340 */
-    --paid-offset-desktop: 330px;  /* was 400 */
+    /* Content offset under the PAID png (smaller = higher content) */
+    --paid-offset-mobile: 260px;
+    --paid-offset-desktop: 330px;
 
-    /* Overlay distance from screen top (PNG position) */
+    /* Overlay PNG distance from top */
     --overlay-top: 10px;
   }
 
@@ -28,29 +28,32 @@
   .page { flex:1 0 auto; position:relative; }
   footer { flex:0 0 auto; padding:14px 0 18px; text-align:center; }
 
-  /* Video */
+  /* Background video */
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* Overlay art */
+  /* Overlay PNGs (don’t scroll with content) */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
   /* Content under PNG */
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; }
   body.paid .content-wrap{ margin-top:var(--paid-offset-mobile); }
-  @media (min-width:916px){ body.paid .content-wrap{ margin-top:var(--paid-offset-desktop);} }
+  @media (min-width:1200px){ body.paid .content-wrap{ margin-top:var(--paid-offset-desktop);} }
   body.unpaid .content-wrap{ margin-top:0; }
 
-  /* Pay button: centered (unpaid only) */
-  .pay-on-art{
-    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
-    z-index:3; pointer-events:auto;
+  /* Unpaid: Pay section IN FLOW, approx middle of screen on load */
+  .pay-section{
+    min-height:55vh;            /* starts near vertical middle */
+    display:flex;
+    align-items:center;         /* vertical centering within this section */
+    justify-content:center;     /* horizontal centering */
   }
+  .pay-section .lead{ max-width:720px; margin:0 auto 18px; text-shadow:0 2px 10px rgba(0,0,0,.45); }
 
   /* Map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
-  @media (max-width:915px){ #map{ height:50vh; } }
+  @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
 
   /* Gate */
@@ -80,31 +83,31 @@
 
   <!-- Overlay PNGs -->
   <div class="overlay-layer" id="overlay">
+    <!-- UNPAID art -->
     <picture id="overlay-free">
-      <source media="(max-width: 915px)" srcset="images/Copyblockmobile.png">
+      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile.png">
       <img src="images/Copyblockdesktop.png" alt="SF Speed Cameras">
     </picture>
+    <!-- PAID art -->
     <picture id="overlay-paid" style="display:none;">
-      <source media="(max-width: 915px)" srcset="images/Copyblockmobile_paid.png">
+      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png">
       <img src="images/Copyblockdesktop_paid.png" alt="SF Speed Cameras (Paid)">
     </picture>
-  </div>
-
-  <!-- Pay button (centered on unpaid) -->
-  <a id="payCTA" class="btn btn-primary btn-lg pay-on-art" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Pay $12</a>
-
-  <!-- SPEED LIMIT sign -->
-  <div id="speedSign" class="speed-sign" aria-live="polite" hidden>
-    <div class="sign">
-      <div class="label">SPEED LIMIT</div>
-      <div class="value" id="speedLimitValue">--</div>
-      <div class="capsule">SPEED CAMERA ZONE</div>
-    </div>
   </div>
 
   <!-- Page -->
   <div class="page">
     <div class="content-wrap">
+      <!-- UNPAID: Pay section (in flow, centered-ish on load) -->
+      <div id="pay-section" class="pay-section" style="display:none;">
+        <div class="text-center">
+          <!-- optional line you can remove if the PNG already carries all copy -->
+          <!-- <p class="lead">Access all features: GPS alerts, location audio, and the full camera list.</p> -->
+          <a id="payCTA" class="btn btn-primary btn-lg" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Pay $12</a>
+        </div>
+      </div>
+
+      <!-- PAID content -->
       <div id="premium-content" class="premium-content">
         <button id="warmup" class="btn btn-off btn-sm mb-3" aria-pressed="false">Sound &amp; GPS: Off</button>
         <div id="map" class="mb-3" tabindex="-1"></div>
@@ -113,6 +116,15 @@
           <ul class="list-group camera-list"></ul>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- SPEED LIMIT sign -->
+  <div id="speedSign" class="speed-sign" aria-live="polite" hidden>
+    <div class="sign">
+      <div class="label">SPEED LIMIT</div>
+      <div class="value" id="speedLimitValue">--</div>
+      <div class="capsule">SPEED CAMERA ZONE</div>
     </div>
   </div>
 
@@ -136,13 +148,16 @@ if (q.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(n
 const isPaid = localStorage.getItem('paid') === 'true';
 document.body.classList.toggle('paid',  isPaid);
 document.body.classList.toggle('unpaid',!isPaid);
-overlaySwap(isPaid);
-document.getElementById('premium-content').style.display = isPaid ? 'block' : 'none';
-document.getElementById('payCTA').style.display = isPaid ? 'none' : 'inline-block';
+
 function overlaySwap(paid){
   document.getElementById('overlay-free').style.display = paid?'none':'block';
   document.getElementById('overlay-paid').style.display = paid?'block':'none';
 }
+overlaySwap(isPaid);
+
+// Show paid/unpaid sections
+document.getElementById('premium-content').style.display = isPaid ? 'block' : 'none';
+document.getElementById('pay-section').style.display   = isPaid ? 'none'  : 'block';
 
 /* ---------- Video loop height fix ---------- */
 const bg = document.getElementById('bgvid');
@@ -296,7 +311,7 @@ async function ensureCorridors(){
   let fc = loadCache();
   if(!fc){
     try{ fc = await fetchLiveCorridors(); saveCache(fc); }
-    catch{ return; } // no live & no cache: we’ll fall back to points for now
+    catch{ return; } // no live & no cache: fall back to points for now
   }else{
     // refresh in background
     fetchLiveCorridors().then(fresh=>saveCache(fresh)).catch(()=>{});
@@ -396,7 +411,11 @@ if (isPaid && warmBtn){
 
 /* ---------- Boot ---------- */
 (async function boot(){
-  if (!isPaid) return;
+  const isPaid = localStorage.getItem('paid') === 'true';
+  if (!isPaid){
+    // unpaid: only show pay section
+    return;
+  }
   initMap();
   await ensureCorridors();
 })();
