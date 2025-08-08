@@ -16,12 +16,9 @@
 
 <style>
   :root{
-    /* How far main content sits under the paid PNGs */
-    --paid-offset-mobile: 260px;
-    --paid-offset-desktop: 330px;
-
-    /* PNG top inset */
-    --overlay-top: 10px;
+    --content-offset-mobile: 260px;   /* content gap under overlay png on phones */
+    --content-offset-desktop: 330px;  /* on wide screens */
+    --overlay-top: 10px;              /* top inset for overlay png */
   }
 
   html, body { height:100%; }
@@ -36,27 +33,25 @@
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* Overlay PNGs (not clickable, layer above video) */
+  /* Overlay PNG (non-interactive, above video) */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
-  /* Content under PNG */
-  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; }
-  body.paid .content-wrap{ margin-top:var(--paid-offset-mobile); }
-  @media (min-width:1200px){ body.paid .content-wrap{ margin-top:var(--paid-offset-desktop);} }
+  /* Content sits below PNG */
+  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; margin-top:var(--content-offset-mobile); }
+  @media (min-width:1200px){
+    .content-wrap{ margin-top:var(--content-offset-desktop); }
+  }
 
   /* Map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
 
-  /* 3-state Sound/GPS button */
+  /* Tri-state Sound/GPS button */
   #soundGps.btn-off{ background:#6c757d; border-color:#6c757d; color:#fff; }   /* Off = gray */
   #soundGps.btn-gps{ background:#ffc107; border-color:#ffc107; color:#111; }  /* GPS only (muted) = yellow */
   #soundGps.btn-on { background:#28a745; border-color:#28a745; color:#fff; }  /* On = green */
-
-  /* Follow toggle */
-  #followMe.btn-on{ background:#0dcaf0; border-color:#0dcaf0; color:#111; }
 
   /* SPEED LIMIT sign */
   .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
@@ -67,37 +62,20 @@
   .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
   .speed-sign.unknown .capsule{ display:inline-block; }
 
-  /* Promo / Ad modals */
-  .promo-overlay{
-    position:fixed; inset:0; background:rgba(0,0,0,.55);
-    display:none; align-items:center; justify-content:center; z-index:1000;
-  }
+  /* Promo modal */
+  .promo-overlay{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:1000; }
   .promo-overlay.show{ display:flex; }
-  .promo-card{
-    position:relative; width:min(92vw, 600px); max-height:86vh;
-    border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.6);
-    background:#111;
-  }
+  .promo-card{ position:relative; width:min(92vw, 600px); max-height:86vh; border-radius:14px; overflow:hidden; box-shadow:0 20px 60px rgba(0,0,0,.6); background:#111; }
   .promo-card img{ width:100%; height:auto; display:block; }
-  .promo-controls{
-    position:absolute; bottom:10px; left:0; right:0; display:flex; gap:10px; justify-content:center;
-  }
-  .promo-btn{
-    border:none; border-radius:999px; padding:10px 16px; font-weight:700; cursor:pointer;
-    box-shadow:0 4px 16px rgba(0,0,0,.35);
-  }
+  .promo-controls{ position:absolute; bottom:10px; left:0; right:0; display:flex; gap:10px; justify-content:center; }
+  .promo-btn{ border:none; border-radius:999px; padding:10px 16px; font-weight:700; cursor:pointer; box-shadow:0 4px 16px rgba(0,0,0,.35); }
   .promo-primary{ background:#0d6efd; color:#fff; }
   .promo-ghost{ background:rgba(255,255,255,.88); color:#111; }
-  .promo-close{
-    position:absolute; top:8px; right:8px; width:36px; height:36px; border-radius:999px; border:none;
-    background:rgba(0,0,0,.5); color:#fff; font-size:20px; line-height:0; cursor:pointer;
-  }
-  .promo-badge{
-    position:absolute; top:8px; left:8px; background:#ffc107; color:#111; font-weight:800; border-radius:6px; padding:6px 10px; font-size:12px;
-  }
+  .promo-close{ position:absolute; top:8px; right:8px; width:36px; height:36px; border-radius:999px; border:none; background:rgba(0,0,0,.5); color:#fff; font-size:20px; line-height:0; cursor:pointer; }
+  .promo-badge{ position:absolute; top:8px; left:8px; background:#ffc107; color:#111; font-weight:800; border-radius:6px; padding:6px 10px; font-size:12px; }
 </style>
 </head>
-<body class="paid"><!-- show full experience by default; promos upsell -->
+<body>
 
   <!-- Background video -->
   <div class="video-bg">
@@ -106,29 +84,27 @@
     </video>
   </div>
 
-  <!-- Overlay PNGs -->
+  <!-- Overlay PNG -->
   <div class="overlay-layer" id="overlay">
-    <picture id="overlay-paid">
+    <picture>
       <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png">
       <img src="images/Copyblockdesktop_paid.png" alt="SF Speed Cameras">
     </picture>
   </div>
 
-  <!-- Page -->
+  <!-- Content -->
   <div class="page">
     <div class="content-wrap">
-      <!-- Controls + Map + List -->
-      <div id="premium-content">
-        <div class="d-flex gap-2 mb-3">
-          <button id="soundGps" class="btn btn-off btn-sm" type="button" title="Cycle: Off → GPS only → Sound+GPS">Sound &amp; GPS: Off</button>
-          <button id="followMe" class="btn btn-outline-light btn-sm" type="button" title="Keep map centered on you">Follow Me: On</button>
-          <a class="btn btn-primary btn-sm ms-auto" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" target="_top" rel="noopener">Go Pro – $12</a>
-        </div>
-        <div id="map" class="mb-3" tabindex="-1"></div>
-        <div id="list" class="card mb-3">
-          <div class="card-header">Camera Locations</div>
-          <ul class="list-group camera-list"></ul>
-        </div>
+      <div class="d-flex gap-2 mb-3">
+        <button id="soundGps" class="btn btn-off btn-sm" type="button" title="Cycle: Off → GPS only → Sound+GPS">Sound &amp; GPS: Off</button>
+        <a class="btn btn-primary btn-sm ms-auto" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" target="_top" rel="noopener">Go Pro – $12</a>
+      </div>
+
+      <div id="map" class="mb-3" tabindex="-1"></div>
+
+      <div id="list" class="card mb-3">
+        <div class="card-header">Camera Locations</div>
+        <ul class="list-group camera-list"></ul>
       </div>
     </div>
   </div>
@@ -161,7 +137,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* -------------------- General boot hygiene -------------------- */
+/* =================== Boot hygiene =================== */
 try { history.scrollRestoration = 'manual'; } catch {}
 if (location.hash) { history.replaceState(null, '', location.pathname); }
 window.addEventListener('load', () => { window.scrollTo(0, 0); document.activeElement?.blur?.(); });
@@ -172,12 +148,8 @@ bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e
 function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
 window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
 
-/* -------------------- Stripe target -------------------- */
-const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
-
-/* -------------------- Map + list + camera radii -------------------- */
-const ENTER_M = 25, EXIT_M = 45; // used for radius visuals too
-
+/* =================== Map + list =================== */
+const ENTER_M = 25;
 const cameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -214,42 +186,35 @@ const cameras = [
   {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
 ];
 
-let map, userMarker, userAccuracy, follow = true;
-const cameraLayers = [];
-
+let map, userMarker, userAccuracy;
 function initMap(){
   map = L.map('map', { zoomControl:true }).setView([37.7749,-122.4194],12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
-  // Markers + radius
+  // Camera markers + small enter radius
   cameras.forEach(c => {
-    const m = L.marker([c.lat,c.lon]).addTo(map).bindPopup(c.name);
-    const circle = L.circle([c.lat, c.lon], {
-      radius: ENTER_M, color:'#e74c3c', weight:2, fill:true, fillOpacity:0.15
-    }).addTo(map);
-    cameraLayers.push({marker:m, circle, name:c.name});
+    L.marker([c.lat,c.lon]).addTo(map).bindPopup(c.name);
+    L.circle([c.lat, c.lon], { radius: ENTER_M, color:'#e74c3c', weight:2, fill:true, fillOpacity:0.15 }).addTo(map);
   });
 
-  // List clicks fly to cam + play location tag
+  // Populate list
   const ul = document.querySelector('.camera-list');
   if (ul){
     cameras.forEach(c=>{
       const li=document.createElement('li');
       li.className='list-group-item';
       li.textContent=c.name;
-      li.addEventListener('click',()=>{
-        map.setView([c.lat,c.lon],15);
-        playLocationOnly(c.name);
-      });
+      li.addEventListener('click',()=>{ map.setView([c.lat,c.lon],15); playLocationOnly(c.name); });
       ul.appendChild(li);
     });
   }
 
+  // iOS focus quirk
   document.getElementById('map').setAttribute('tabindex','-1');
 }
 
-/* -------------------- Audio: stems, tags, locations -------------------- */
-const AUDIO_BASE = 'images/audio/';
+/* =================== Audio chain =================== */
+const AUDIO_BASE = 'images/audio/'; // you placed audio here
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
   'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
@@ -303,7 +268,6 @@ function pick(a){ return a[Math.floor(Math.random()*a.length)] }
 function playFile(f){ new Audio(AUDIO_BASE+f).play().catch(()=>{}); }
 function playLocationOnly(name){ const f=LOC[name]; if(f) playFile(f); }
 
-// guard against jitter double-plays
 let __playing = false;
 function playChain(files){
   if(!files.length || __playing) return;
@@ -316,15 +280,13 @@ function playChain(files){
   };
 }
 function playGeofenceAlert(name){
-  const f = LOC[name];
-  if(!f) return;
+  const f = LOC[name]; if(!f) return;
   playChain([pick(STEMS), f, pick(TAGS)]);
   if(navigator.vibrate) navigator.vibrate([250,100,250]);
 }
 
-/* -------------------- Speed sign -------------------- */
-const SPEED_LIMITS = {}; // from corridors
-let currentZone = null;
+/* =================== Speed sign =================== */
+const SPEED_LIMITS = {}; // future: fill from ArcGIS corridors if available
 function showSpeedSign(limit){
   const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
   if (!box || !val) return;
@@ -334,135 +296,10 @@ function showSpeedSign(limit){
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* -------------------- ArcGIS corridors + weekly refresh -------------------- */
-const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
-const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
-const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
-const CACHE_KEY = 'sf_ase_corridors_v1';
-const CACHE_TIME_KEY = 'sf_ase_corridors_v1_time';
-const WEEK_MS = 7*24*60*60*1000;
-
-let CORRIDOR_INDEX = new Map(); // name -> { line, buffer, speed, dir }
-function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
-
-async function fetchLiveCorridors(){
-  const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
-  const r = await fetch(url, { cache:'no-store' });
-  if(!r.ok) throw new Error('ArcGIS down');
-  return await r.json();
-}
-function loadCache(){ try{ const s=localStorage.getItem(CACHE_KEY); return s?JSON.parse(s):null; }catch{ return null; } }
-function saveCache(fc){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(fc)); localStorage.setItem(CACHE_TIME_KEY, String(Date.now())); }catch{} }
-
-async function ensureCorridors(){
-  let fc = loadCache();
-  const last = Number(localStorage.getItem(CACHE_TIME_KEY)||0);
-  const stale = !last || (Date.now() - last > WEEK_MS); // weekly refresh
-
-  if(!fc || stale){
-    try{ fc = await fetchLiveCorridors(); saveCache(fc); }
-    catch{ /* keep whatever we had */ }
-  }else{
-    // Soft-refresh in background
-    fetchLiveCorridors().then(saveCache).catch(()=>{});
-  }
-
-  if(!fc) return;
-
-  CORRIDOR_INDEX.clear();
-  (fc.features||[]).forEach(feat=>{
-    const props = feat.properties || {};
-    let geom = feat.geometry;
-    if(!geom) return;
-
-    if(geom.type==='MultiLineString'){
-      geom = { type:'LineString', coordinates: geom.coordinates.sort((a,b)=>b.length-a.length)[0] };
-    }
-    if(geom.type!=='LineString') return;
-
-    const nameRaw = getProp(props, NAME_FIELDS);
-    const name = nameRaw ? String(nameRaw).trim() : null;
-    if(!name) return;
-
-    const speed = Number(getProp(props, SPEED_FIELDS));
-    const line  = geom;
-
-    // narrow corridor membership polygon
-    let buffered = null;
-    try{ buffered = turf.buffer(line, 20, { units:'meters' }); }catch{}
-
-    CORRIDOR_INDEX.set(name, {
-      line,
-      buffer: buffered,
-      speed: Number.isFinite(speed)?speed:null,
-      dir: props.Direction || props.DIRECTION || null
-    });
-
-    if(Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
-  });
-}
-
-/* -------------------- Geofencing w/ bearing filter -------------------- */
-const MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
-const insideNow = new Set(), lastAlertAt = new Map();
-
-function toRad(d){return d*Math.PI/180}
-function distKm(aLat,aLon,bLat,bLon){
-  const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
-  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
-}
-function passesGates(coords){
-  const {accuracy,speed}=coords;
-  if(accuracy && accuracy>MAX_ACC_M) return false;
-  if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
-  return true;
-}
-function headingMatches(headingDeg, dir){
-  if(!dir || typeof headingDeg!=='number') return true;
-  const map={NB:0,N:0,EB:90,E:90,SB:180,S:180,WB:270,W:270};
-  const tgt = map[String(dir).toUpperCase()] ?? null; if(tgt==null) return true;
-  const diff = Math.min(Math.abs(headingDeg-tgt), 360-Math.abs(headingDeg-tgt));
-  return diff <= 60;
-}
-function inCorridorBuffer(name, lngLat){
-  const e = CORRIDOR_INDEX.get(name);
-  if (!e || !e.buffer) return false;
-  return turf.booleanPointInPolygon(turf.point(lngLat), e.buffer);
-}
-async function corridorDistanceM(name, lngLat){
-  const e = CORRIDOR_INDEX.get(name);
-  if(e && e.line) return turf.pointToLineDistance(turf.point(lngLat), e.line, { units:'meters' });
-  const cam = cameras.find(c=>c.name===name); if(!cam) return Infinity;
-  return distKm(lngLat[1],lngLat[0],cam.lat,cam.lon)*1000;
-}
-function headingAlignsWithLine(name, lngLat, userHeading){
-  const e = CORRIDOR_INDEX.get(name);
-  if (!e || !e.line || typeof userHeading !== 'number') return true;
-  const pt = turf.point(lngLat);
-  const snapped = turf.nearestPointOnLine(e.line, pt);
-  const idx = snapped.properties.index;
-  const coords = e.line.coordinates;
-  const a = coords[Math.max(0, idx - 1)];
-  const b = coords[Math.min(coords.length - 1, idx + 1)];
-  if (!a || !b) return true;
-  const segBearing = turf.bearing(turf.point(a), turf.point(b));
-  const user = ((userHeading % 360) + 360) % 360;
-  const seg  = ((segBearing  % 360) + 360) % 360;
-  const diff = Math.min(Math.abs(user - seg), 360 - Math.abs(user - seg));
-  return diff <= 60;
-}
-
-/* -------------------- Sound/GPS tri-state + live location -------------------- */
+/* =================== Tri-state control + GPS =================== */
 const soundBtn = document.getElementById('soundGps');
-const followBtn = document.getElementById('followMe');
 let gpsState = 'off'; // 'off' | 'gps' | 'on'
-let follow = true;
-
 function reflectButtons(){
-  followBtn.classList.toggle('btn-on', follow);
-  followBtn.textContent = `Follow Me: ${follow ? 'On' : 'Off'}`;
-
   if(gpsState==='off'){
     soundBtn.className='btn btn-off btn-sm';
     soundBtn.textContent='Sound & GPS: Off';
@@ -477,90 +314,88 @@ function reflectButtons(){
     soundBtn.setAttribute('aria-pressed','true');
   }
 }
-
-followBtn?.addEventListener('click', ()=>{ follow=!follow; reflectButtons(); });
-
-soundBtn?.addEventListener('click', ()=>{
+soundBtn.addEventListener('click', ()=>{
   gpsState = (gpsState==='off') ? 'gps' : (gpsState==='gps' ? 'on' : 'off');
   if(gpsState==='off'){
     if (navigator.geolocation && window.__watchId!=null){ navigator.geolocation.clearWatch(window.__watchId); window.__watchId=null; }
-  } else {
-    startGPS(); // (re)start watch
+    hideSpeedSign();
+  }else{
+    startGPS();
   }
   reflectButtons();
 });
 reflectButtons();
 
-/* Live user marker + accuracy + follow */
+/* Live user marker + accuracy */
 function updateUserOnMap(lat, lon, acc){
   const latlng = [lat, lon];
   if(!userMarker){
-    userMarker = L.circleMarker(latlng, {radius:6, color:'#007bff', fillColor:'#007bff', fillOpacity:1}).addTo(map);
+    userMarker = L.circleMarker(latlng, {radius:6, color:'#0d6efd', fillColor:'#0d6efd', fillOpacity:1}).addTo(map);
   } else userMarker.setLatLng(latlng);
 
   if(!userAccuracy){
-    userAccuracy = L.circle(latlng, {radius:acc||10, color:'#007bff', weight:1, fill:true, fillOpacity:0.08}).addTo(map);
+    userAccuracy = L.circle(latlng, {radius:acc||10, color:'#0d6efd', weight:1, fill:true, fillOpacity:0.08}).addTo(map);
   } else {
     userAccuracy.setLatLng(latlng);
     userAccuracy.setRadius(acc||10);
   }
-  if (follow) map.setView(latlng, Math.max(map.getZoom(), 14), {animate:false});
 }
 
-/* -------------------- Geofencing loop (watchPosition) -------------------- */
+/* Minimal gates */
+const MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
+const insideNow = new Set(), lastAlertAt = new Map();
+function passesGates(coords){
+  const {accuracy,speed}=coords;
+  if(accuracy && accuracy>MAX_ACC_M) return false;
+  if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
+  return true;
+}
+
+/* Simple distance (fallback without corridors) */
+function toRad(d){return d*Math.PI/180}
+function distKm(aLat,aLon,bLat,bLon){
+  const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+
+/* GPS watch */
 function startGPS(){
   if(!('geolocation' in navigator)) return;
   if(window.__watchId!=null) return;
-
-  // kick audio subsystem once for iOS (no-op if blocked)
   try{ new Audio().play().catch(()=>{}); }catch(e){}
 
   window.__watchId = navigator.geolocation.watchPosition(async pos=>{
-    const {latitude,longitude,accuracy,speed,heading}=pos.coords;
+    const {latitude,longitude,accuracy,speed}=pos.coords;
     updateUserOnMap(latitude, longitude, accuracy);
 
     if(!passesGates(pos.coords)) return;
-    const now=Date.now(), lngLat=[longitude,latitude];
+    const now=Date.now();
 
     for(const cam of cameras){
-      const ent = CORRIDOR_INDEX.get(cam.name);
-      if(!ent) continue;
-
-      // Directional tag + local bearing
-      if (ent.dir && !headingMatches(heading, ent.dir)) continue;
-      if (!headingAlignsWithLine(cam.name, lngLat, heading)) continue;
-
-      // membership / distance with hysteresis
-      const inside = inCorridorBuffer(cam.name, lngLat);
-      const dM = inside ? 0 : await corridorDistanceM(cam.name, lngLat);
+      const dM = distKm(latitude, longitude, cam.lat, cam.lon)*1000;
       const wasIn = insideNow.has(cam.name);
-      const entering = (!wasIn) && (inside || dM <= ENTER_M);
-      const exiting  = wasIn && (!inside && dM > EXIT_M);
+      const entering = !wasIn && dM <= ENTER_M;
+      const exiting  = wasIn && dM > ENTER_M*2;
 
-      if (entering) {
+      if (entering){
         const last = lastAlertAt.get(cam.name)||0;
-        if (now-last > COOLDOWN_MS) {
-          if (gpsState!=='off'){          // GPS must be active
-            if (gpsState==='on'){         // sound only in 'on'
-              playGeofenceAlert(cam.name);
-            }
-            const limit = (ent && ent.speed) || SPEED_LIMITS[cam.name];
-            showSpeedSign(limit);
-            lastAlertAt.set(cam.name, now);
-          }
+        if (now-last > COOLDOWN_MS){
+          if (gpsState==='on'){ playGeofenceAlert(cam.name); }
+          showSpeedSign(SPEED_LIMITS[cam.name]); // (may show --)
+          lastAlertAt.set(cam.name, now);
         }
         insideNow.add(cam.name);
-        currentZone = cam.name;
-      } else if (exiting) {
+      } else if (exiting){
         insideNow.delete(cam.name);
-        if (currentZone === cam.name){ currentZone = null; hideSpeedSign(); }
+        hideSpeedSign();
       }
     }
   }, err=>console.warn('Geolocation error', err),
   { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
 }
 
-/* -------------------- Promos every 30 minutes (audio overrides mute) -------------------- */
+/* =================== Promos every 30 minutes (audio overrides mute) =================== */
 const PROMOS = [
   { img:'images/Ad1.png', audio:'images/audio/Ad1.mp3', seconds:7, badge:'New in SF' },
   { img:'images/Ad2.png', audio:'images/audio/Ad1.mp3', seconds:6, badge:'Try it free' }
@@ -576,48 +411,34 @@ const promoSnooze = document.getElementById('promoSnooze');
 const promoBadge  = document.getElementById('promoBadge');
 
 let promoIdx = 0, promoAudio = null, promoTimer = null;
-
 function openPromo(i){
   const p = PROMOS[i]; if(!p) return closePromo();
   promoImg.src = p.img;
   promoBadge.textContent = p.badge || 'Upgrade';
   promoEl.classList.add('show');
-
-  // ALWAYS play voiceover, regardless of app mute state (may still be blocked by OS autoplay rules)
-  try{
-    promoAudio = new Audio(p.audio);
-    promoAudio.play().catch(()=>{ /* mobile might block until first gesture */});
-  }catch(e){}
-
+  try{ promoAudio = new Audio(p.audio); promoAudio.play().catch(()=>{}); }catch(e){}
   clearTimeout(promoTimer);
   promoTimer = setTimeout(nextPromo, p.seconds*1000);
 }
 function stopPromoAudio(){ try{ promoAudio?.pause?.(); }catch{} promoAudio=null; }
 function closePromo(){ promoEl.classList.remove('show'); clearTimeout(promoTimer); stopPromoAudio(); }
-function nextPromo(){ closePromo(); promoIdx++; if (promoIdx < PROMOS.length) openPromo(promoIdx); else markPromoShownNow(); }
-function markPromoShownNow(){ localStorage.setItem(PROMO_LAST_KEY, String(Date.now())); }
+function nextPromo(){ closePromo(); promoIdx++; if (promoIdx < PROMOS.length) openPromo(promoIdx); else localStorage.setItem(PROMO_LAST_KEY, String(Date.now())); }
 
 promoClose?.addEventListener('click', nextPromo);
-promoGo?.addEventListener('click', ()=>{ window.location.href = STRIPE_URL; });
-promoSnooze?.addEventListener('click', ()=>{ markPromoShownNow(); closePromo(); });
+promoGo?.addEventListener('click', ()=>{ window.location.href = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01"; });
+promoSnooze?.addEventListener('click', ()=>{ localStorage.setItem(PROMO_LAST_KEY, String(Date.now())); closePromo(); });
 
 function maybeShowPromos(){
   const last = Number(localStorage.getItem(PROMO_LAST_KEY)||0);
   if (!last || (Date.now()-last) >= PROMO_INTERVAL_MS){
-    promoIdx = 0;
-    openPromo(0);
+    promoIdx = 0; openPromo(0);
   }
 }
 
-/* -------------------- Boot -------------------- */
-(async function boot(){
+/* =================== Boot =================== */
+(function boot(){
   initMap();
-  await ensureCorridors();
   reflectButtons();
-  // Start in GPS-only mute state for initial map follow (optional)
-  // gpsState='gps'; startGPS(); reflectButtons();
-
-  // Kick first promo a few seconds after load if due
   setTimeout(maybeShowPromos, 3500);
 })();
 </script>
