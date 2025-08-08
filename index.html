@@ -9,55 +9,61 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!-- Turf (ready for corridor polylines) -->
+  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
   <style>
+    :root{
+      --content-offset: 60px;  /* push content (nav/map/list) down */
+      --overlay-top: 20px;     /* PNG overlay lowered 5px from earlier (was 15) */
+    }
     body { position:relative; background:#0b0b0b; color:#fff; margin:0; font-family:system-ui,-apple-system,Arial; font-weight:600; overflow-x:hidden; }
 
-    /* Video bg stays centered, underneath everything */
-    .video-background { position:fixed; inset:0; z-index:-3; overflow:hidden; }
-    .video-background video { min-width:100%; min-height:100%; object-fit:cover; object-position:center center; }
+    /* Full-viewport, centered video, iOS-proof */
+    .video-bg { position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
+    .video-bg video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-    /* Overlay PNG: separate layer, scrolls with page, above video but behind content */
-    .overlay-layer { position:absolute; top:15px; left:0; width:100%; z-index:-1; pointer-events:none; } /* lowered ~15px */
+    /* Overlay art: own layer, scrolls with page, behind content, not in layout */
+    .overlay-layer { position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:-1; pointer-events:none; }
     .overlay-layer img { width:100%; height:auto; display:block; }
 
-    /* Content wrapper — no dark box now */
-    .content-wrap { position:relative; padding:16px 20px 20px; }
+    /* Content sits below the PNG headline by ~60px */
+    .content-wrap { position:relative; padding:16px 20px 20px; margin-top:var(--content-offset); }
 
-    /* Navbar / map / list */
+    /* Nav / map / list */
     .navbar { background:transparent; border:none; }
     #map { height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
     @media (max-width:915px){ #map{height:50vh} } /* big-phone breakpoint */
     .camera-list { max-height:200px; overflow-y:auto; }
 
-    /* Paywall/premium toggles */
     .paywall { text-align:center; color:#fff; }
     .premium-content { display:none; }
 
-    /* Hidden text for SEO/a11y (PNG already has the copy) */
+    /* Hidden text for SEO/a11y (PNG carries the visuals) */
     .visually-hidden { position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
   </style>
-
-  <!-- Lightweight manifest (can replace with files later) -->
-  <link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;:&quot;SF Speed Cameras&quot;,&quot;short_name&quot;:&quot;SF Cams&quot;,&quot;start_url&quot;:&quot;.&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;#000000&quot;,&quot;theme_color&quot;:&quot;#000000&quot;}">
 </head>
 <body>
-  <!-- Centered video background -->
-  <div class="video-background">
-    <video autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
+  <!-- Background video -->
+  <div class="video-bg">
+    <video id="bgvid" autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
       <source src="videos/background.mp4" type="video/mp4">
     </video>
   </div>
 
-  <!-- Overlay art (single set; no paid swap) -->
+  <!-- Overlay art: FREE by default; swap to *_paid on unlock -->
   <div class="overlay-layer">
-    <picture>
+    <picture id="overlay-free">
       <source media="(max-width: 915px)" srcset="images/Copyblockmobile.png">
       <img src="images/Copyblockdesktop.png" alt="SF Speed Cameras">
     </picture>
+    <picture id="overlay-paid" style="display:none;">
+      <source media="(max-width: 915px)" srcset="images/Copyblockmobile_paid.png">
+      <img src="images/Copyblockdesktop_paid.png" alt="SF Speed Cameras (Paid)">
+    </picture>
   </div>
 
-  <!-- Main content -->
+  <!-- Main content (moved down ~60px) -->
   <div class="content-wrap">
     <nav class="navbar navbar-expand-lg navbar-dark">
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
@@ -71,24 +77,20 @@
       </div>
     </nav>
 
-    <!-- Keep semantic text for accessibility, hidden visually -->
     <h1 class="visually-hidden">Know before you’re in a zone</h1>
     <p class="visually-hidden">Instant GPS alerts for SF speed-camera corridors</p>
 
-    <!-- Paywall (no sound/GPS button on unpaid page) -->
+    <!-- Paywall (no warmup on unpaid) -->
     <div id="paywall" class="paywall mb-3">
       <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
     </div>
 
-    <!-- Premium content -->
+    <!-- Premium -->
     <div id="premium-content" class="premium-content">
-      <!-- Enable button ONLY on paid page (needed for background GPS + autoplay chains) -->
       <button id="warmup" class="btn btn-outline-light btn-sm mb-3">Enable sound &amp; GPS</button>
 
-      <!-- Map -->
       <div id="map" class="mb-3"></div>
 
-      <!-- Camera list -->
       <div id="list" class="card mb-3">
         <div class="card-header">Camera Locations</div>
         <ul class="list-group camera-list"></ul>
@@ -104,7 +106,6 @@
       </div>
     </div>
 
-    <!-- AdSense -->
     <div class="text-center my-4">
       <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5613464352561730" crossorigin="anonymous"></script>
       <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-5613464352561730" data-ad-slot="" data-ad-format="auto"></ins>
@@ -119,13 +120,25 @@
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
-    /* ---------- Purchase gate ---------- */
+    /* ---------- Video loop + iOS viewport fallback ---------- */
+    const bg = document.getElementById('bgvid');
+    bg?.addEventListener('ended', () => { try { bg.currentTime = 0; bg.play(); } catch(e){} }, false);
+    function sizeBG(){ const el = document.querySelector('.video-bg'); if (!el) return; el.style.height = window.innerHeight + 'px'; }
+    window.addEventListener('resize', sizeBG);
+    window.addEventListener('orientationchange', sizeBG);
+    sizeBG();
+
+    /* ---------- Purchase gate + overlay swap ---------- */
     const urlParams = new URLSearchParams(location.search);
     if (urlParams.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(null,'',location.pathname); }
     const isPaid = localStorage.getItem('paid') === 'true';
+
     if (isPaid) {
       document.getElementById('paywall').style.display = 'none';
       document.getElementById('premium-content').style.display = 'block';
+      // show paid art
+      document.getElementById('overlay-free').style.display = 'none';
+      document.getElementById('overlay-paid').style.display = 'block';
     }
 
     /* ---------- Cameras ---------- */
@@ -171,11 +184,7 @@
       map = L.map('map').setView([37.7749,-122.4194],12);
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
-      cameras.forEach(c => {
-        const marker = L.marker([c.lat,c.lon]).addTo(map).bindPopup(c.name + '<br>Slow down!');
-        // No audio on marker click per your request
-        marker.on('click', () => { /* just the default popup */ });
-      });
+      cameras.forEach(c => L.marker([c.lat,c.lon]).addTo(map).bindPopup(c.name + '<br>Slow down!'));
 
       const ul = document.querySelector('.camera-list');
       if (ul) {
@@ -183,24 +192,18 @@
           const li = document.createElement('li');
           li.className = 'list-group-item';
           li.textContent = c.name;
-
-          // Row click recenters the map and plays ONLY the location clip
           li.addEventListener('click', () => {
             map.setView([c.lat, c.lon], 15);
-            playLocationOnly(c.name);
+            playLocationOnly(c.name); // ONLY the location clip on list click
           });
-
           ul.appendChild(li);
         });
       }
     }
-    // Build the map as soon as page is ready (both unpaid and paid)
     initMap();
 
-    /* ---------- AUDIO ---------- */
+    /* ---------- Audio ---------- */
     const AUDIO_BASE = 'images/audio/'; // relative path for GitHub Pages
-
-    // Intros & tags used ONLY for GPS geofence alerts
     const STEMS = Array.from({length: 11}, (_,i)=>`speed_camera_ahead_${i+1}.mp3`);
     const TAGS = [
       'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
@@ -214,7 +217,6 @@
       'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
       'brakes_are_a_good_good_friend.mp3'
     ];
-    // Location file map
     const LOC = {
       "Fulton Street from 42nd to 43rd Ave":"fulton_street_from_42nd_to_43rd_ave.mp3",
       "Lincoln Way from 27th to 28th Ave":"lincoln_way_from_27th_to_28th_ave.mp3",
@@ -252,18 +254,28 @@
     };
 
     function pick(a){ return a[Math.floor(Math.random()*a.length)] }
-    function playFile(file){ const a = new Audio(AUDIO_BASE + file); a.play().catch(()=>{}); }
-    function playLocationOnly(name){ const loc = LOC[name]; if(loc) playFile(loc); } // used on list click
+    function playFile(file){ const a=new Audio(AUDIO_BASE+file); a.play().catch(()=>{}); }
+    function playLocationOnly(name){ const loc=LOC[name]; if(loc) playFile(loc); }
     function playChain(files){
       if(!files.length) return;
       const a = new Audio(AUDIO_BASE + files[0]);
       a.play().catch(()=>{});
       a.onended = () => playChain(files.slice(1));
     }
+    function playGeofenceAlert(name){
+      const loc = LOC[name]; if(!loc) return;
+      playChain([pick(STEMS), loc, pick(TAGS)]);
+      if (navigator.vibrate) navigator.vibrate([250,100,250]);
+    }
 
-    /* ---------- Geofence (paid only) with gesture warmup ---------- */
-    const ENTER_KM = 0.35, EXIT_KM = 0.50, COOLDOWN = 60_000;
-    const active = new Set(); let lastAlert = 0; let watcherId = null;
+    /* ---------- Geofence: per-corridor cooldown, tighter radius, accuracy gate ---------- */
+    const ENTER_KM = 0.08;   // ~80 m
+    const EXIT_KM  = 0.12;   // ~120 m
+    const COOLDOWN_MS = 45_000;
+
+    const insideNow = new Set();
+    const lastAlertAt = new Map();
+    let watcherId = null;
 
     function toRad(d){ return d*Math.PI/180 }
     function distKm(a,b,c,d){
@@ -272,47 +284,42 @@
       return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
     }
 
-    function playGeofenceAlert(name){
-      // full chain: random intro -> location -> random tag
-      const loc = LOC[name]; if(!loc) return;
-      playChain([pick(STEMS), loc, pick(TAGS)]);
-      if (navigator.vibrate) navigator.vibrate([250,100,250]);
-    }
-
     function startGPS(){
       if (watcherId !== null) return;
-      // warm audio so mobile allows background autoplay
-      const warm = new Audio(); warm.play().catch(()=>{});
-      if ('geolocation' in navigator) {
-        watcherId = navigator.geolocation.watchPosition(pos=>{
-          const {latitude, longitude} = pos.coords;
-          const now = Date.now();
-          cameras.forEach(cam=>{
-            const d = distKm(latitude, longitude, cam.lat, cam.lon);
-            const inside = d <= ENTER_KM;
-            const wasIn = active.has(cam.name);
-            if (!wasIn && inside){
-              if (now - lastAlert > COOLDOWN){
-                playGeofenceAlert(cam.name);
-                lastAlert = now;
-              }
-              active.add(cam.name);
-            } else if (wasIn && d > EXIT_KM){
-              active.delete(cam.name);
+      const warm = new Audio(); warm.play().catch(()=>{}); // gesture warmup
+      if (!('geolocation' in navigator)) return;
+
+      watcherId = navigator.geolocation.watchPosition(pos=>{
+        const { latitude, longitude, accuracy } = pos.coords;
+        const now = Date.now();
+
+        // Skip noisy fixes (tune if needed)
+        if (accuracy && accuracy > 40) return;
+
+        cameras.forEach(cam=>{
+          // POINT MODE: distance to the stored point
+          // (When you supply corridor LineStrings, we’ll switch to Turf line distance here.)
+          const d = distKm(latitude, longitude, cam.lat, cam.lon);
+          const inZone = d <= ENTER_KM;
+          const wasIn  = insideNow.has(cam.name);
+
+          if (!wasIn && inZone) {
+            const last = lastAlertAt.get(cam.name) || 0;
+            if (now - last > COOLDOWN_MS) {
+              playGeofenceAlert(cam.name);
+              lastAlertAt.set(cam.name, now);
             }
-          });
-        }, err=>console.warn('Geolocation error', err),
-        { enableHighAccuracy:true, maximumAge:2000, timeout:10000 });
-      }
+            insideNow.add(cam.name);
+          } else if (wasIn && d > EXIT_KM) {
+            insideNow.delete(cam.name);
+          }
+        });
+      }, err=>console.warn('Geolocation error', err),
+      { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
     }
 
     if (isPaid) {
       document.getElementById('warmup')?.addEventListener('click', startGPS);
-    }
-
-    /* ---------- Minimal cache SW ---------- */
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('data:application/javascript, self.addEventListener("install", e => e.waitUntil(caches.open("sf-alerts").then(c => c.addAll([\"/\"])))); self.addEventListener("fetch", e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));');
     }
   </script>
 </body>
