@@ -1,47 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>SF Speed Cameras - Alerts & Map</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SF Speed Cameras - Alerts & Map</title>
 
-  <!-- Bootstrap & Leaflet -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <!-- Turf for distance-to-line -->
-  <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
-  <style>
-    :root{
-      --content-offset: 120px; /* content sits below the PNG headline */
-      --overlay-top: 20px;     /* PNG overlay top offset (you asked for +5px) */
-    }
-    body { position:relative; background:#0b0b0b; color:#fff; margin:0; font-family:system-ui,-apple-system,Arial; font-weight:600; overflow-x:hidden; }
+<style>
+  /* ====== TUNE THESE ONLY ====== */
+  :root{
+    /* Paid layout: push content (map, button, list) below PNG type */
+    --paid-offset-mobile: 360px;   /* iPhone-sized screens */
+    --paid-offset-desktop: 420px;  /* tablets/desktop */
 
-    /* Full-viewport centered video, iOS-friendly */
-    .video-bg { position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
-    .video-bg video { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
+    /* Unpaid layout: place the Pay button ON the PNG at a % from the top */
+    --unpaid-pay-y-mobile: 32%;    /* iPhone-sized screens */
+    --unpaid-pay-y-desktop: 28%;   /* tablets/desktop */
 
-    /* Overlay art ON TOP of map/content so text is never buried */
-    .overlay-layer { position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
-    .overlay-layer img { width:100%; height:auto; display:block; }
+    /* Overlay distance from the top */
+    --overlay-top: 10px;
+  }
 
-    /* Content is pushed down so it clears the PNG headline */
-    .content-wrap { position:relative; padding:16px 20px 20px; margin-top:var(--content-offset); z-index:1; }
+  /* ====== Base styles ====== */
+  body{margin:0;background:#0b0b0b;color:#fff;font-family:system-ui,-apple-system,Arial;font-weight:600;overflow-x:hidden}
+  .video-bg{position:fixed;left:0;top:0;width:100vw;height:100dvh;z-index:-3;overflow:hidden}
+  .video-bg video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center center}
+  .overlay-layer{position:absolute;left:0;top:var(--overlay-top);width:100%;z-index:2;pointer-events:none}
+  .overlay-layer img{width:100%;height:auto;display:block}
 
-    /* Nav / map / list */
-    .navbar { background:transparent; border:none; }
-    #map { height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
-    @media (max-width:915px){ #map{height:50vh} }
-    .camera-list { max-height:200px; overflow-y:auto; }
+  /* Content wrapper gets an explicit offset depending on paid/unpaid + breakpoint */
+  .content-wrap{position:relative;padding:16px 20px 24px;z-index:1}
+  body.paid .content-wrap{margin-top:var(--paid-offset-mobile)}
+  @media (min-width:916px){ body.paid .content-wrap{margin-top:var(--paid-offset-desktop)} }
+  body.unpaid .content-wrap{margin-top:0} /* unpaid has no content above the fold, it’s all inside the PNG */
 
-    .paywall { text-align:center; color:#fff; }
-    .premium-content { display:none; }
+  /* Top links (no hamburger) */
+  .top-links{display:flex;gap:16px;justify-content:flex-end;margin-bottom:8px}
+  .top-links a{color:#fff;text-decoration:none;opacity:.9}
+  .top-links a:hover{opacity:1;text-decoration:underline}
 
-    /* Accessibility text (PNG carries visible copy) */
-    .visually-hidden { position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
-  </style>
+  /* Map/list */
+  #map{height:60vh;border:1px solid #ddd;border-radius:8px;background:rgba(255,255,255,.85)}
+  @media (max-width:915px){ #map{height:50vh} }
+  .camera-list{max-height:200px;overflow-y:auto}
+
+  /* Gate sections */
+  .paywall{text-align:center;color:#fff}
+  .premium-content{display:none}
+
+  /* Enable button states */
+  #warmup.btn-off{border-color:#fff;color:#fff}
+  #warmup.btn-on{background:#28a745;border-color:#28a745;color:#fff}
+
+  /* Pay button positioned ON the unpaid PNG */
+  .pay-on-art{
+    position:absolute;left:50%;transform:translateX(-50%);
+    z-index:3;pointer-events:auto; /* clickable */
+  }
+  body.unpaid .pay-on-art{top:var(--unpaid-pay-y-mobile)}
+  @media (min-width:916px){ body.unpaid .pay-on-art{top:var(--unpaid-pay-y-desktop)} }
+
+  /* Hidden text for a11y/SEO (PNG contains visible words) */
+  .visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+</style>
 </head>
 <body>
   <!-- Background video -->
@@ -51,43 +76,39 @@
     </video>
   </div>
 
-  <!-- Overlay art: FREE by default; swap to *_paid on unlock -->
-  <div class="overlay-layer">
+  <!-- Overlay images -->
+  <div class="overlay-layer" id="overlay">
+    <!-- UNPAID PNG (headline + body copy) -->
     <picture id="overlay-free">
       <source media="(max-width: 915px)" srcset="images/Copyblockmobile.png">
       <img src="images/Copyblockdesktop.png" alt="SF Speed Cameras">
     </picture>
+    <!-- PAID PNG (logo + short line) -->
     <picture id="overlay-paid" style="display:none;">
       <source media="(max-width: 915px)" srcset="images/Copyblockmobile_paid.png">
       <img src="images/Copyblockdesktop_paid.png" alt="SF Speed Cameras (Paid)">
     </picture>
   </div>
 
-  <!-- Main content (pushed down below PNG text) -->
+  <!-- Pay button ON the unpaid PNG -->
+  <a id="payCTA" class="btn btn-primary btn-lg pay-on-art" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" role="button">Pay $12</a>
+
+  <!-- Main content -->
   <div class="content-wrap">
-    <nav class="navbar navbar-expand-lg navbar-dark">
-      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-        <span class="navbar-toggler-icon"></span>
-      </button>
-      <div class="collapse navbar-collapse" id="navbarNav">
-        <ul class="navbar-nav ms-auto">
-          <li class="nav-item"><a class="nav-link" href="#map">Map</a></li>
-          <li class="nav-item"><a class="nav-link" href="#list">List</a></li>
-        </ul>
-      </div>
-    </nav>
-
-    <h1 class="visually-hidden">Know before you’re in a zone</h1>
-    <p class="visually-hidden">Instant GPS alerts for SF speed-camera corridors</p>
-
-    <!-- Paywall -->
-    <div id="paywall" class="paywall mb-3">
-      <a href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Pay $12</a>
+    <!-- No hamburger -->
+    <div class="top-links">
+      <a href="#map">Map</a>
+      <a href="#list">List</a>
     </div>
 
-    <!-- Premium -->
+    <!-- Unpaid gate (kept for SEO only; visual CTA is on-art) -->
+    <div id="paywall" class="paywall mb-3">
+      <!-- empty; CTA is positioned on the PNG above -->
+    </div>
+
+    <!-- Paid content -->
     <div id="premium-content" class="premium-content">
-      <button id="warmup" class="btn btn-outline-light btn-sm mb-3">Enable sound &amp; GPS</button>
+      <button id="warmup" class="btn btn-off btn-sm mb-3" aria-pressed="false">Sound &amp; GPS: Off</button>
 
       <div id="map" class="mb-3"></div>
 
@@ -95,21 +116,6 @@
         <div class="card-header">Camera Locations</div>
         <ul class="list-group camera-list"></ul>
       </div>
-
-      <div id="setup-guide" class="p-3 rounded" style="background:rgba(0,0,0,.55)">
-        <h5>Use it like an app</h5>
-        <ol class="mb-0">
-          <li>Add to Home Screen / Install.</li>
-          <li>Tap “Enable sound &amp; GPS” once per session.</li>
-          <li>Allow location; keep app open or recent.</li>
-        </ol>
-      </div>
-    </div>
-
-    <div class="text-center my-4">
-      <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5613464352561730" crossorigin="anonymous"></script>
-      <ins class="adsbygoogle" style="display:block" data-ad-client="ca-pub-5613464352561730" data-ad-slot="" data-ad-format="auto"></ins>
-      <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
     </div>
 
     <footer class="text-center mt-3">
@@ -117,292 +123,206 @@
     </footer>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  /* ---------- Mode switch (paid/unpaid) ---------- */
+  const urlParams = new URLSearchParams(location.search);
+  if (urlParams.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(null,'',location.pathname); }
+  const isPaid = localStorage.getItem('paid') === 'true';
 
-  <script>
-    /* ---------- Video loop + iOS viewport fallback ---------- */
-    const bg = document.getElementById('bgvid');
-    bg?.addEventListener('ended', () => { try { bg.currentTime = 0; bg.play(); } catch(e){} }, false);
-    function sizeBG(){ const el = document.querySelector('.video-bg'); if (!el) return; el.style.height = window.innerHeight + 'px'; }
-    window.addEventListener('resize', sizeBG);
-    window.addEventListener('orientationchange', sizeBG);
-    sizeBG();
+  document.body.classList.toggle('paid',  isPaid);
+  document.body.classList.toggle('unpaid',!isPaid);
 
-    /* ---------- Purchase gate + overlay swap ---------- */
-    const urlParams = new URLSearchParams(location.search);
-    if (urlParams.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(null,'',location.pathname); }
-    const isPaid = localStorage.getItem('paid') === 'true';
-    if (isPaid) {
-      document.getElementById('paywall').style.display = 'none';
-      document.getElementById('premium-content').style.display = 'block';
-      document.getElementById('overlay-free').style.display = 'none';
-      document.getElementById('overlay-paid').style.display = 'block';
+  // Swap art & sections
+  if (isPaid){
+    document.getElementById('overlay-free').style.display = 'none';
+    document.getElementById('overlay-paid').style.display = 'block';
+    document.getElementById('premium-content').style.display = 'block';
+    document.getElementById('payCTA').style.display = 'none'; // hide Pay button on art
+  } else {
+    document.getElementById('premium-content').style.display = 'none';
+    document.getElementById('overlay-paid').style.display = 'none';
+    document.getElementById('overlay-free').style.display = 'block';
+    document.getElementById('payCTA').style.display = 'inline-block';
+  }
+
+  /* ---------- Video loop fallback for iOS ---------- */
+  const bg = document.getElementById('bgvid');
+  bg?.addEventListener('ended', () => { try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
+  function sizeBG(){ const el = document.querySelector('.video-bg'); if (!el) return; el.style.height = window.innerHeight + 'px'; }
+  window.addEventListener('resize', sizeBG);
+  window.addEventListener('orientationchange', sizeBG);
+  sizeBG();
+
+  /* ---------- Map + list ---------- */
+  const cameras = [
+    {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
+    {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
+    {name:"Geary Blvd from 7th to 8th Ave",lat:37.7805,lon:-122.4660},
+    {name:"Fulton St from 2nd Ave to Arguello Blvd",lat:37.7735,lon:-122.4550},
+    {name:"Geary Blvd from Webster to Buchanan St",lat:37.7845,lon:-122.4310},
+    {name:"Turk St from Van Ness Ave to Polk St",lat:37.7820,lon:-122.4195},
+    {name:"Bay St from Octavia to Gough St",lat:37.8040,lon:-122.4230},
+    {name:"Franklin St from Union to Green St",lat:37.8000,lon:-122.4235},
+    {name:"Columbus Ave from Lombard to Greenwich St",lat:37.8025,lon:-122.4135},
+    {name:"Broadway from Powell to Stockton St",lat:37.7975,lon:-122.4075},
+    {name:"The Embarcadero from Green to Battery St",lat:37.8070,lon:-122.4005},
+    {name:"Mission St from 8th to 9th St",lat:37.7740,lon:-122.4110},
+    {name:"10th St from Harrison to Folsom St",lat:37.7715,lon:-122.4115},
+    {name:"9th St from Bryant to Harrison St",lat:37.7725,lon:-122.4090},
+    {name:"7th St from Harrison to Folsom St",lat:37.7745,lon:-122.4065},
+    {name:"Harrison St from 4th to 5th St",lat:37.7795,lon:-122.4015},
+    {name:"Bryant St from 2nd to 3rd St",lat:37.7820,lon:-122.3965},
+    {name:"King St (EB only) from 4th to 5th St",lat:37.7775,lon:-122.3940},
+    {name:"Market St from Danvers to Douglass St",lat:37.7615,lon:-122.4320},
+    {name:"Guerrero St from 19th to 20th St",lat:37.7590,lon:-122.4230},
+    {name:"16th St from Bryant St to Potrero Ave",lat:37.7650,lon:-122.4075},
+    {name:"San Jose Ave from 29th to 30th St",lat:37.7435,lon:-122.4235},
+    {name:"Cesar Chavez St from Folsom to Harrison St",lat:37.7480,lon:-122.4035},
+    {name:"Cesar Chavez St from Indiana to Tennessee St",lat:37.7505,lon:-122.3900},
+    {name:"3rd St (NB only) from Key to Jamestown Ave",lat:37.7275,lon:-122.3885},
+    {name:"Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave",lat:37.7100,lon:-122.3990},
+    {name:"Geneva Ave from Prague St to Brookdale Ave",lat:37.7130,lon:-122.4405},
+    {name:"Mission St from Ottawa Ave to Allison St",lat:37.7145,lon:-122.4400},
+    {name:"Alemany Blvd from Farragut to Naglee Ave",lat:37.7320,lon:-122.4425},
+    {name:"Ocean Ave from Frida Kahlo Way to Howth St",lat:37.7235,lon:-122.4525},
+    {name:"San Jose Ave from Santa Ynez to Ocean Ave",lat:37.7280,lon:-122.4430},
+    {name:"Monterey Blvd from Edna to Congo St",lat:37.7315,lon:-122.4650},
+    {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
+  ];
+
+  let map;
+  function initMap(){
+    map = L.map('map').setView([37.7749,-122.4194],12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
+    cameras.forEach(c => L.marker([c.lat,c.lon]).addTo(map).bindPopup(c.name));
+    const ul = document.querySelector('.camera-list');
+    if (ul){
+      cameras.forEach(c=>{
+        const li=document.createElement('li');
+        li.className='list-group-item';
+        li.textContent=c.name;
+        li.addEventListener('click',()=>{ map.setView([c.lat,c.lon],15); playLocationOnly(c.name); });
+        ul.appendChild(li);
+      });
     }
+  }
+  if (isPaid) initMap();
 
-    /* ---------- Cameras ---------- */
-    const cameras = [
-      {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
-      {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
-      {name:"Geary Blvd from 7th to 8th Ave",lat:37.7805,lon:-122.4660},
-      {name:"Fulton St from 2nd Ave to Arguello Blvd",lat:37.7735,lon:-122.4550},
-      {name:"Geary Blvd from Webster to Buchanan St",lat:37.7845,lon:-122.4310},
-      {name:"Turk St from Van Ness Ave to Polk St",lat:37.7820,lon:-122.4195},
-      {name:"Bay St from Octavia to Gough St",lat:37.8040,lon:-122.4230},
-      {name:"Franklin St from Union to Green St",lat:37.8000,lon:-122.4235},
-      {name:"Columbus Ave from Lombard to Greenwich St",lat:37.8025,lon:-122.4135},
-      {name:"Broadway from Powell to Stockton St",lat:37.7975,lon:-122.4075},
-      {name:"The Embarcadero from Green to Battery St",lat:37.8070,lon:-122.4005},
-      {name:"Mission St from 8th to 9th St",lat:37.7740,lon:-122.4110},
-      {name:"10th St from Harrison to Folsom St",lat:37.7715,lon:-122.4115},
-      {name:"9th St from Bryant to Harrison St",lat:37.7725,lon:-122.4090},
-      {name:"7th St from Harrison to Folsom St",lat:37.7745,lon:-122.4065},
-      {name:"Harrison St from 4th to 5th St",lat:37.7795,lon:-122.4015},
-      {name:"Bryant St from 2nd to 3rd St",lat:37.7820,lon:-122.3965},
-      {name:"King St (EB only) from 4th to 5th St",lat:37.7775,lon:-122.3940},
-      {name:"Market St from Danvers to Douglass St",lat:37.7615,lon:-122.4320},
-      {name:"Guerrero St from 19th to 20th St",lat:37.7590,lon:-122.4230},
-      {name:"16th St from Bryant St to Potrero Ave",lat:37.7650,lon:-122.4075},
-      {name:"San Jose Ave from 29th to 30th St",lat:37.7435,lon:-122.4235},
-      {name:"Cesar Chavez St from Folsom to Harrison St",lat:37.7480,lon:-122.4035},
-      {name:"Cesar Chavez St from Indiana to Tennessee St",lat:37.7505,lon:-122.3900},
-      {name:"3rd St (NB only) from Key to Jamestown Ave",lat:37.7275,lon:-122.3885},
-      {name:"Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave",lat:37.7100,lon:-122.3990},
-      {name:"Geneva Ave from Prague St to Brookdale Ave",lat:37.7130,lon:-122.4405},
-      {name:"Mission St from Ottawa Ave to Allison St",lat:37.7145,lon:-122.4400},
-      {name:"Alemany Blvd from Farragut to Naglee Ave",lat:37.7320,lon:-122.4425},
-      {name:"Ocean Ave from Frida Kahlo Way to Howth St",lat:37.7235,lon:-122.4525},
-      {name:"San Jose Ave from Santa Ynez to Ocean Ave",lat:37.7280,lon:-122.4430},
-      {name:"Monterey Blvd from Edna to Congo St",lat:37.7315,lon:-122.4650},
-      {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
-    ];
+  /* ---------- Audio (paths must match repo) ---------- */
+  const AUDIO_BASE = 'images/audio/';
+  const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
+  const TAGS = [
+    'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
+    'no_need_for_a_photo_finish.mp3','your_best_pose_is_slow.mp3','they_go_high_we_go_slow.mp3',
+    'keep_it_chill_avoid_the_bill.mp3','slow_is_the_new_fast.mp3','pace_yourself.mp3',
+    'less_gas_more_class.mp3','the_smart_money_is_on_slowing_down.mp3','avoid_the_money_shot.mp3',
+    'chill_now_thank_yourself_later.mp3','no_rush_no_fuss.mp3','safety_first_bitches.mp3',
+    'easy_does_it.mp3','save_the_drama_for_the_drivethru.mp3','your_brakes_called_they_are_ready_to_help.mp3',
+    'lets_keep_your_record_clean_ish.mp3','slow_jams_only.mp3','brake_it_till_you_make_it.mp3',
+    'slow_and_easy_hotshot.mp3','the_only_rush_is_in_your_head.mp3','drive_like_someone_is_watching.mp3',
+    'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
+    'brakes_are_a_good_good_friend.mp3'
+  ];
+  const LOC = {
+    "Fulton Street from 42nd to 43rd Ave":"fulton_street_from_42nd_to_43rd_ave.mp3",
+    "Lincoln Way from 27th to 28th Ave":"lincoln_way_from_27th_to_28th_ave.mp3",
+    "Geary Blvd from 7th to 8th Ave":"geary_blvd_from_7th_to_8th_ave.mp3",
+    "Fulton St from 2nd Ave to Arguello Blvd":"fulton_st_from_2nd_ave_to_arguello_blvd.mp3",
+    "Geary Blvd from Webster to Buchanan St":"geary_blvd_from_webster_to_buchanan_st.mp3",
+    "Turk St from Van Ness Ave to Polk St":"turk_st_from_van_ness_ave_to_polk_st.mp3",
+    "Bay St from Octavia to Gough St":"bay_st_from_octavia_to_gough_st.mp3",
+    "Franklin St from Union to Green St":"franklin_st_from_union_to_green_st.mp3",
+    "Columbus Ave from Lombard to Greenwich St":"columbus_ave_from_lombard_to_greenwich_st.mp3",
+    "Broadway from Powell to Stockton St":"broadway_from_powell_to_stockton_st.mp3",
+    "The Embarcadero from Green to Battery St":"the_embarcadero_from_green_to_battery_st.mp3",
+    "Mission St from 8th to 9th St":"mission_st_from_8th_to_9th_st.mp3",
+    "10th St from Harrison to Folsom St":"10th_st_from_harrison_to_folsom_st.mp3",
+    "9th St from Bryant to Harrison St":"9th_st_from_bryant_to_harrison_st.mp3",
+    "7th St from Harrison to Folsom St":"7th_st_from_harrison_to_folsom_st.mp3",
+    "Harrison St from 4th to 5th St":"harrison_st_from_4th_to_5th_st.mp3",
+    "Bryant St from 2nd to 3rd St":"bryant_st_from_2nd_to_3rd_st.mp3",
+    "King St (EB only) from 4th to 5th St":"king_st_eb_only_from_4th_to_5th_st.mp3",
+    "Market St from Danvers to Douglass St":"market_st_from_danvers_to_douglass_st.mp3",
+    "Guerrero St from 19th to 20th St":"guerrero_st_from_19th_to_20th_st.mp3",
+    "16th St from Bryant St to Potrero Ave":"16th_st_from_bryant_st_to_potrero_ave.mp3",
+    "San Jose Ave from 29th to 30th St":"san_jose_ave_from_29th_to_30th_st.mp3",
+    "Cesar Chavez St from Folsom to Harrison St":"cesar_chavez_st_from_folsom_to_harrison_st.mp3",
+    "Cesar Chavez St from Indiana to Tennessee St":"cesar_chavez_st_from_indiana_to_tennessee_st.mp3",
+    "3rd St (NB only) from Key to Jamestown Ave":"3rd_st_nb_only_from_key_to_jamestown_ave.mp3",
+    "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave":"bayshore_blvd_sb_only_from_101_off_ramp_to_tunnel_ave.mp3",
+    "Geneva Ave from Prague St to Brookdale Ave":"geneva_ave_from_prague_st_to_brookdale_ave.mp3",
+    "Mission St from Ottawa Ave to Allison St":"mission_st_from_ottawa_ave_to_allison_st.mp3",
+    "Alemany Blvd from Farragut to Naglee Ave":"alemany_blvd_from_farragut_to_naglee_ave.mp3",
+    "Ocean Ave from Frida Kahlo Way to Howth St":"ocean_ave_from_frida_kahlo_way_to_howth_st.mp3",
+    "San Jose Ave from Santa Ynez to Ocean Ave":"san_jose_ave_from_santa_ynez_to_ocean_ave.mp3",
+    "Monterey Blvd from Edna to Congo St":"monterey_blvd_from_edna_to_congo_st.mp3",
+    "Sloat Blvd from 41st Ave to Skyline Blvd":"sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
+  };
 
-    /* ---------- Map & list ---------- */
-    let map;
-    function initMap(){
-      map = L.map('map').setView([37.7749,-122.4194],12);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
+  function pick(a){return a[Math.floor(Math.random()*a.length)]}
+  function playFile(f){ const a=new Audio('images/audio/'+f); a.play().catch(()=>{}); }
+  function playLocationOnly(name){ const f=LOC[name]; if(f) playFile(f); }
+  function playChain(files){
+    if(!files.length) return;
+    const a=new Audio('images/audio/'+files[0]); a.play().catch(()=>{});
+    a.onended=()=>playChain(files.slice(1));
+  }
+  function playGeofenceAlert(name){
+    const f=LOC[name]; if(!f) return;
+    playChain([pick(STEMS), f, pick(TAGS)]);
+    if(navigator.vibrate) navigator.vibrate([250,100,250]);
+  }
 
-      cameras.forEach(c => L.marker([c.lat,c.lon]).addTo(map).bindPopup(c.name + '<br>Slow down!'));
+  /* ---------- GPS + stateful Enable button ---------- */
+  const warmBtn = document.getElementById('warmup');
+  let watcherId=null, warmed=false;
+  function setWarmState(on){
+    warmed=!!on;
+    if(!warmBtn) return;
+    warmBtn.classList.toggle('btn-on', on);
+    warmBtn.classList.toggle('btn-off', !on);
+    warmBtn.textContent = on ? 'Sound & GPS: On' : 'Sound & GPS: Off';
+    warmBtn.setAttribute('aria-pressed', on ? 'true':'false');
+  }
+  function toRad(d){return d*Math.PI/180}
+  function distKm(a,b,c,d){const R=6371,dLat=toRad(c-a),dLon=toRad(d-b);const s=Math.sin(dLat/2)**2+Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLon/2)**2;return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));}
 
-      const ul = document.querySelector('.camera-list');
-      if (ul) {
-        cameras.forEach(c => {
-          const li = document.createElement('li');
-          li.className = 'list-group-item';
-          li.textContent = c.name;
-          li.addEventListener('click', () => {
-            map.setView([c.lat, c.lon], 15);
-            playLocationOnly(c.name); // ONLY the location clip on list click
-          });
-          ul.appendChild(li);
-        });
+  const ENTER_M=80, EXIT_M=120, COOLDOWN_MS=45000;
+  const insideNow=new Set(), lastAlertAt=new Map();
+
+  async function getDistanceToPoint(cam, userPt){
+    const dKm = distKm(userPt[1], userPt[0], cam.lat, cam.lon);
+    return dKm*1000;
+  }
+
+  function startGPS(){
+    if(watcherId!==null) return;
+    // audio gesture warmup
+    const a=new Audio(); a.play().catch(()=>{});
+    if(!('geolocation' in navigator)) return;
+    setWarmState(true);
+
+    watcherId = navigator.geolocation.watchPosition(async pos=>{
+      const {latitude, longitude, accuracy}=pos.coords;
+      if(accuracy && accuracy>40) return;
+      const now=Date.now();
+      for(const cam of cameras){
+        const dM = await getDistanceToPoint(cam,[longitude,latitude]); // (line fetch can be re-added later)
+        const inZone = dM<=ENTER_M, wasIn=insideNow.has(cam.name);
+        if(!wasIn && inZone){
+          const last=lastAlertAt.get(cam.name)||0;
+          if(now-last>COOLDOWN_MS){ playGeofenceAlert(cam.name); lastAlertAt.set(cam.name,now); }
+          insideNow.add(cam.name);
+        }else if(wasIn && dM>EXIT_M){ insideNow.delete(cam.name); }
       }
-    }
-    initMap();
+    }, err=>{ console.warn('Geolocation error',err); setWarmState(false); },
+    {enableHighAccuracy:true,maximumAge:500,timeout:8000});
+  }
 
-    /* ---------- Audio ---------- */
-    const AUDIO_BASE = 'images/audio/'; // relative path for GitHub Pages
-    const STEMS = Array.from({length: 11}, (_,i)=>`speed_camera_ahead_${i+1}.mp3`);
-    const TAGS = [
-      'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
-      'no_need_for_a_photo_finish.mp3','your_best_pose_is_slow.mp3','they_go_high_we_go_slow.mp3',
-      'keep_it_chill_avoid_the_bill.mp3','slow_is_the_new_fast.mp3','pace_yourself.mp3',
-      'less_gas_more_class.mp3','the_smart_money_is_on_slowing_down.mp3','avoid_the_money_shot.mp3',
-      'chill_now_thank_yourself_later.mp3','no_rush_no_fuss.mp3','safety_first_bitches.mp3',
-      'easy_does_it.mp3','save_the_drama_for_the_drivethru.mp3','your_brakes_called_they_are_ready_to_help.mp3',
-      'lets_keep_your_record_clean_ish.mp3','slow_jams_only.mp3','brake_it_till_you_make_it.mp3',
-      'slow_and_easy_hotshot.mp3','the_only_rush_is_in_your_head.mp3','drive_like_someone_is_watching.mp3',
-      'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
-      'brakes_are_a_good_good_friend.mp3'
-    ];
-    const LOC = {
-      "Fulton Street from 42nd to 43rd Ave":"fulton_street_from_42nd_to_43rd_ave.mp3",
-      "Lincoln Way from 27th to 28th Ave":"lincoln_way_from_27th_to_28th_ave.mp3",
-      "Geary Blvd from 7th to 8th Ave":"geary_blvd_from_7th_to_8th_ave.mp3",
-      "Fulton St from 2nd Ave to Arguello Blvd":"fulton_st_from_2nd_ave_to_arguello_blvd.mp3",
-      "Geary Blvd from Webster to Buchanan St":"geary_blvd_from_webster_to_buchanan_st.mp3",
-      "Turk St from Van Ness Ave to Polk St":"turk_st_from_van_ness_ave_to_polk_st.mp3",
-      "Bay St from Octavia to Gough St":"bay_st_from_octavia_to_gough_st.mp3",
-      "Franklin St from Union to Green St":"franklin_st_from_union_to_green_st.mp3",
-      "Columbus Ave from Lombard to Greenwich St":"columbus_ave_from_lombard_to_greenwich_st.mp3",
-      "Broadway from Powell to Stockton St":"broadway_from_powell_to_stockton_st.mp3",
-      "The Embarcadero from Green to Battery St":"the_embarcadero_from_green_to_battery_st.mp3",
-      "Mission St from 8th to 9th St":"mission_st_from_8th_to_9th_st.mp3",
-      "10th St from Harrison to Folsom St":"10th_st_from_harrison_to_folsom_st.mp3",
-      "9th St from Bryant to Harrison St":"9th_st_from_bryant_to_harrison_st.mp3",
-      "7th St from Harrison to Folsom St":"7th_st_from_harrison_to_folsom_st.mp3",
-      "Harrison St from 4th to 5th St":"harrison_st_from_4th_to_5th_st.mp3",
-      "Bryant St from 2nd to 3rd St":"bryant_st_from_2nd_to_3rd_st.mp3",
-      "King St (EB only) from 4th to 5th St":"king_st_eb_only_from_4th_to_5th_st.mp3",
-      "Market St from Danvers to Douglass St":"market_st_from_danvers_to_douglass_st.mp3",
-      "Guerrero St from 19th to 20th St":"guerrero_st_from_19th_to_20th_st.mp3",
-      "16th St from Bryant St to Potrero Ave":"16th_st_from_bryant_st_to_potrero_ave.mp3",
-      "San Jose Ave from 29th to 30th St":"san_jose_ave_from_29th_to_30th_st.mp3",
-      "Cesar Chavez St from Folsom to Harrison St":"cesar_chavez_st_from_folsom_to_harrison_st.mp3",
-      "Cesar Chavez St from Indiana to Tennessee St":"cesar_chavez_st_from_indiana_to_tennessee_st.mp3",
-      "3rd St (NB only) from Key to Jamestown Ave":"3rd_st_nb_only_from_key_to_jamestown_ave.mp3",
-      "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave":"bayshore_blvd_sb_only_from_101_off_ramp_to_tunnel_ave.mp3",
-      "Geneva Ave from Prague St to Brookdale Ave":"geneva_ave_from_prague_st_to_brookdale_ave.mp3",
-      "Mission St from Ottawa Ave to Allison St":"mission_st_from_ottawa_ave_to_allison_st.mp3",
-      "Alemany Blvd from Farragut to Naglee Ave":"alemany_blvd_from_farragut_to_naglee_ave.mp3",
-      "Ocean Ave from Frida Kahlo Way to Howth St":"ocean_ave_from_frida_kahlo_way_to_howth_st.mp3",
-      "San Jose Ave from Santa Ynez to Ocean Ave":"san_jose_ave_from_santa_ynez_to_ocean_ave.mp3",
-      "Monterey Blvd from Edna to Congo St":"monterey_blvd_from_edna_to_congo_st.mp3",
-      "Sloat Blvd from 41st Ave to Skyline Blvd":"sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
-    };
-
-    function pick(a){ return a[Math.floor(Math.random()*a.length)] }
-    function playFile(file){ const a=new Audio(AUDIO_BASE+file); a.play().catch(()=>{}); }
-    function playLocationOnly(name){ const loc=LOC[name]; if(loc) playFile(loc); }
-    function playChain(files){
-      if(!files.length) return;
-      const a = new Audio(AUDIO_BASE + files[0]);
-      a.play().catch(()=>{});
-      a.onended = () => playChain(files.slice(1));
-    }
-    function playGeofenceAlert(name){
-      const loc = LOC[name]; if(!loc) return;
-      playChain([pick(STEMS), loc, pick(TAGS)]);
-      if (navigator.vibrate) navigator.vibrate([250,100,250]);
-    }
-
-    /* ---------- Polyline fetch (Overpass) + local cache ---------- */
-    const overpassURL = 'https://overpass-api.de/api/interpreter';
-    const lineCache = JSON.parse(localStorage.getItem('corridorLines') || '{}'); // name -> GeoJSON LineString
-
-    // Extract primary street name (text before " from ")
-    function primaryStreet(name){
-      const idx = name.toLowerCase().indexOf(' from ');
-      return idx > 0 ? name.slice(0, idx) : name;
-    }
-
-    async function fetchCorridorLine(cam){
-      const key = cam.name;
-      if (lineCache[key]) return lineCache[key];
-
-      const street = primaryStreet(cam.name).replace(/"/g,''); // sanitize
-      const lat = cam.lat, lon = cam.lon;
-
-      // Overpass: find ways with this name within ~250m of the known point
-      const q = `
-        [out:json][timeout:25];
-        (
-          way(around:250,${lat},${lon})[highway][name~"^${street}$", i];
-          way(around:250,${lat},${lon})[highway][name~"^${street.replace(/\\b(St|Ave|Blvd|Rd)\\.?\\b/gi,'')}$", i];
-        );
-        (._;>;);
-        out geom;`;
-
-      try {
-        const res = await fetch(overpassURL, { method:'POST', body:q, headers:{'Content-Type':'text/plain'} });
-        if (!res.ok) throw new Error('Overpass error');
-        const data = await res.json();
-        // Build a single LineString from the longest matching way
-        const ways = (data.elements || []).filter(e => e.type === 'way' && Array.isArray(e.geometry));
-        if (ways.length) {
-          ways.sort((a,b)=>b.geometry.length - a.geometry.length);
-          const coords = ways[0].geometry.map(pt => [pt.lon, pt.lat]);
-          const line = { type:'LineString', coordinates: coords };
-          lineCache[key] = line;
-          localStorage.setItem('corridorLines', JSON.stringify(lineCache));
-          return line;
-        }
-      } catch(e) {
-        console.warn('Overpass fetch failed for', key, e);
-      }
-      return null;
-    }
-
-    /* ---------- Geofence: line-first, point fallback ---------- */
-    const ENTER_M = 80;      // ~80 m
-    const EXIT_M  = 120;     // ~120 m
-    const COOLDOWN_MS = 45_000;
-    const insideNow = new Set();
-    const lastAlertAt = new Map();
-    let watcherId = null;
-
-    function toRad(d){ return d*Math.PI/180 }
-    function distKm(a,b,c,d){
-      const R=6371, dLat=toRad(c-a), dLon=toRad(d-b);
-      const s = Math.sin(dLat/2)**2 + Math.cos(toRad(a))*Math.cos(toRad(c))*Math.sin(dLon/2)**2;
-      return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1-s));
-    }
-
-    function metersToKm(m){ return m / 1000; }
-
-    async function getDistanceToCorridor(cam, userPt){
-      // Prefer polyline distance (meters); fallback to point distance (km -> m)
-      const line = await fetchCorridorLine(cam);
-      if (line) {
-        const d = turf.pointToLineDistance(userPt, line, {units:'meters'});
-        return d; // meters
-      }
-      // fallback to point
-      const dKm = distKm(userPt.geometry.coordinates[1], userPt.geometry.coordinates[0], cam.lat, cam.lon);
-      return dKm * 1000;
-    }
-
-    function startGPS(){
-      if (watcherId !== null) return;
-      const warm = new Audio(); warm.play().catch(()=>{}); // gesture warmup
-
-      if (!('geolocation' in navigator)) return;
-      watcherId = navigator.geolocation.watchPosition(async pos=>{
-        const { latitude, longitude, accuracy } = pos.coords;
-        const now = Date.now();
-        if (accuracy && accuracy > 40) return; // skip noisy fixes
-
-        const userPt = turf.point([longitude, latitude]);
-
-        for (const cam of cameras) {
-          try {
-            const dM = await getDistanceToCorridor(cam, userPt); // meters
-            const inZone = dM <= ENTER_M;
-            const wasIn  = insideNow.has(cam.name);
-
-            if (!wasIn && inZone) {
-              const last = lastAlertAt.get(cam.name) || 0;
-              if (now - last > COOLDOWN_MS) {
-                playGeofenceAlert(cam.name);
-                lastAlertAt.set(cam.name, now);
-              }
-              insideNow.add(cam.name);
-            } else if (wasIn && dM > EXIT_M) {
-              insideNow.delete(cam.name);
-            }
-          } catch(e) {
-            console.warn('Distance calc failed for', cam.name, e);
-          }
-        }
-      }, err=>console.warn('Geolocation error', err),
-      { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
-    }
-
-    if (isPaid) {
-      document.getElementById('warmup')?.addEventListener('click', startGPS);
-    }
-
-    /* ---------- Build map/list now ---------- */
-    (function initApp(){
-      const ul = document.querySelector('.camera-list');
-      if (ul) {
-        cameras.forEach(c => {
-          const li = document.createElement('li');
-          li.className = 'list-group-item';
-          li.textContent = c.name;
-          li.addEventListener('click', () => {
-            map.setView([c.lat, c.lon], 15);
-            playLocationOnly(c.name); // list = location-only
-          });
-          ul.appendChild(li);
-        });
-      }
-    })();
-
-    /* ---------- Simple service worker cache ---------- */
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('data:application/javascript, self.addEventListener("install", e => e.waitUntil(caches.open("sf-alerts").then(c => c.addAll([\"/\"])))); self.addEventListener(\"fetch\", e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));');
-    }
-  </script>
+  if (isPaid && warmBtn){
+    warmBtn.addEventListener('click', ()=> warmed ? setWarmState(true) : startGPS());
+  }
+</script>
 </body>
 </html>
