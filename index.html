@@ -43,12 +43,20 @@
   body.unpaid .content-wrap{ margin-top:0; }
 
   /* Unpaid: Pay section IN FLOW, approx middle of screen on load */
+.pay-section{
+  min-height:55vh;            /* starts near vertical middle */
+  margin-top:300px;           /* NEW: nudge it down ~300px */
+  display:flex;
+  align-items:center;         /* vertical centering within this section */
+  justify-content:center;     /* horizontal centering */
+}
+@media (min-width:1200px){
   .pay-section{
-    min-height:55vh;            /* starts near vertical middle */
-    display:flex;
-    align-items:center;         /* vertical centering within this section */
-    justify-content:center;     /* horizontal centering */
+    min-height:50vh;          /* desktop feel tweak */
+    margin-top:280px;         /* similar placement on wide screens */
   }
+}
+
   .pay-section .lead{ max-width:720px; margin:0 auto 18px; text-shadow:0 2px 10px rgba(0,0,0,.45); }
 
   /* Map/list */
