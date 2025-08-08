@@ -12,11 +12,11 @@
 
 <style>
   :root{
-    /* PNG stays put; content sits below it */
-    --paid-offset-mobile: 340px;
-    --paid-offset-desktop: 400px;
-    --unpaid-pay-y-mobile: 32%;
-    --unpaid-pay-y-desktop: 28%;
+    /* PNG stays put; content sits below it (smaller = higher content) */
+    --paid-offset-mobile: 260px;   /* was 340 */
+    --paid-offset-desktop: 330px;  /* was 400 */
+
+    /* Overlay distance from screen top (PNG position) */
     --overlay-top: 10px;
   }
 
@@ -42,12 +42,11 @@
   @media (min-width:916px){ body.paid .content-wrap{ margin-top:var(--paid-offset-desktop);} }
   body.unpaid .content-wrap{ margin-top:0; }
 
-  /* Pay button ON the unpaid PNG */
+  /* Pay button: centered (unpaid only) */
   .pay-on-art{
-    position:absolute; left:50%; transform:translateX(-50%); z-index:3; pointer-events:auto;
+    position:fixed; left:50%; top:50%; transform:translate(-50%,-50%);
+    z-index:3; pointer-events:auto;
   }
-  body.unpaid .pay-on-art{ top:var(--unpaid-pay-y-mobile); }
-  @media (min-width:916px){ body.unpaid .pay-on-art{ top:var(--unpaid-pay-y-desktop);} }
 
   /* Map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
@@ -91,7 +90,7 @@
     </picture>
   </div>
 
-  <!-- Pay button on-art -->
+  <!-- Pay button (centered on unpaid) -->
   <a id="payCTA" class="btn btn-primary btn-lg pay-on-art" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Pay $12</a>
 
   <!-- SPEED LIMIT sign -->
@@ -108,7 +107,7 @@
     <div class="content-wrap">
       <div id="premium-content" class="premium-content">
         <button id="warmup" class="btn btn-off btn-sm mb-3" aria-pressed="false">Sound &amp; GPS: Off</button>
-        <div id="map" class="mb-3"></div>
+        <div id="map" class="mb-3" tabindex="-1"></div>
         <div id="list" class="card mb-3">
           <div class="card-header">Camera Locations</div>
           <ul class="list-group camera-list"></ul>
@@ -123,33 +122,35 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* ------- Paid/unpaid toggle ------- */
+/* ---------- STOP auto-jump/scroll ---------- */
+try { history.scrollRestoration = 'manual'; } catch {}
+if (location.hash) { history.replaceState(null, '', location.pathname); }
+window.addEventListener('load', () => {
+  window.scrollTo(0, 0);
+  if (document.activeElement) document.activeElement.blur();
+});
+
+/* ---------- Paid/unpaid toggle & overlay swap ---------- */
 const q = new URLSearchParams(location.search);
 if (q.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(null,'',location.pathname); }
 const isPaid = localStorage.getItem('paid') === 'true';
 document.body.classList.toggle('paid',  isPaid);
 document.body.classList.toggle('unpaid',!isPaid);
-if (isPaid){
-  overlaySwap(true);
-  document.getElementById('premium-content').style.display = 'block';
-  document.getElementById('payCTA').style.display = 'none';
-}else{
-  overlaySwap(false);
-  document.getElementById('premium-content').style.display = 'none';
-  document.getElementById('payCTA').style.display = 'inline-block';
-}
+overlaySwap(isPaid);
+document.getElementById('premium-content').style.display = isPaid ? 'block' : 'none';
+document.getElementById('payCTA').style.display = isPaid ? 'none' : 'inline-block';
 function overlaySwap(paid){
   document.getElementById('overlay-free').style.display = paid?'none':'block';
   document.getElementById('overlay-paid').style.display = paid?'block':'none';
 }
 
-/* ------- Video loop height fix ------- */
+/* ---------- Video loop height fix ---------- */
 const bg = document.getElementById('bgvid');
 bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
 function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
 window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
 
-/* ------- Map + list ------- */
+/* ---------- Map + list ---------- */
 const cameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -201,9 +202,11 @@ function initMap(){
       ul.appendChild(li);
     });
   }
+  // prevent map focus from causing a scroll jump on iOS
+  document.getElementById('map').setAttribute('tabindex','-1');
 }
 
-/* ------- Audio wiring (unchanged) ------- */
+/* ---------- Audio (unchanged) ---------- */
 const AUDIO_BASE = 'images/audio/';
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
@@ -259,7 +262,7 @@ function playLocationOnly(name){ const f=LOC[name]; if(f) playFile(f); }
 function playChain(files){ if(!files.length) return; const a=new Audio(AUDIO_BASE+files[0]); a.play().catch(()=>{}); a.onended=()=>playChain(files.slice(1)); }
 function playGeofenceAlert(name){ const f=LOC[name]; if(!f) return; playChain([pick(STEMS), f, pick(TAGS)]); if(navigator.vibrate) navigator.vibrate([250,100,250]); }
 
-/* ------- SPEED LIMIT sign ------- */
+/* ---------- SPEED LIMIT sign ---------- */
 const SPEED_LIMITS = {}; // auto-filled from ArcGIS
 let currentZone = null;
 function showSpeedSign(limit){
@@ -271,11 +274,11 @@ function showSpeedSign(limit){
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* ------- ArcGIS live fetch + local cache (no repo changes) ------- */
+/* ---------- ArcGIS live fetch + local cache ---------- */
 const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
 const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
 const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
-const CACHE_KEY = 'sf_ase_corridors_v1'; // bump version to force refresh
+const CACHE_KEY = 'sf_ase_corridors_v1'; // bump to refresh
 
 let CORRIDOR_INDEX = new Map(); // name -> { line, speed, dir }
 function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
@@ -293,9 +296,9 @@ async function ensureCorridors(){
   let fc = loadCache();
   if(!fc){
     try{ fc = await fetchLiveCorridors(); saveCache(fc); }
-    catch{ /* no live, no cache yet -> we’ll fall back to point logic until next load */ return; }
+    catch{ return; } // no live & no cache: we’ll fall back to points for now
   }else{
-    // try to refresh in background; keep cache if it fails
+    // refresh in background
     fetchLiveCorridors().then(fresh=>saveCache(fresh)).catch(()=>{});
   }
 
@@ -317,7 +320,7 @@ async function ensureCorridors(){
   });
 }
 
-/* ------- Geofencing (polyline if available; else point) ------- */
+/* ---------- Geofencing (polyline if available; else point) ---------- */
 const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 function toRad(d){return d*Math.PI/180}
@@ -356,4 +359,47 @@ function startGPS(){
 
       if(!wasIn && inZone){
         const last = lastAlertAt.get(cam.name)||0;
-       
+        if(now-last>COOLDOWN_MS){
+          playGeofenceAlert(cam.name);
+          const limit = (ent && ent.speed) || SPEED_LIMITS[cam.name];
+          showSpeedSign(limit);
+          lastAlertAt.set(cam.name, now);
+        }
+        insideNow.add(cam.name);
+        currentZone = cam.name;
+      } else if (wasIn && dM > EXIT_M){
+        insideNow.delete(cam.name);
+        if (currentZone === cam.name){ currentZone = null; hideSpeedSign(); }
+      }
+    }
+  }, err=>console.warn('Geolocation error', err),
+  { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
+}
+
+/* ---------- Enable Sound & GPS toggle ---------- */
+const warmBtn = document.getElementById('warmup');
+let warmed=false;
+function setWarmState(on){
+  warmed=!!on;
+  if(!warmBtn) return;
+  warmBtn.classList.toggle('btn-on', on);
+  warmBtn.classList.toggle('btn-off', !on);
+  warmBtn.textContent = on ? 'Sound & GPS: On' : 'Sound & GPS: Off';
+  warmBtn.setAttribute('aria-pressed', on ? 'true':'false');
+}
+if (isPaid && warmBtn){
+  warmBtn.addEventListener('click', ()=>{
+    if (!warmed){ setWarmState(true); startGPS(); }
+    else setWarmState(true);
+  });
+}
+
+/* ---------- Boot ---------- */
+(async function boot(){
+  if (!isPaid) return;
+  initMap();
+  await ensureCorridors();
+})();
+</script>
+</body>
+</html>
