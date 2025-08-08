@@ -12,9 +12,11 @@
 
 <style>
   :root{
-    /* Content offset under the PAID png (smaller = higher content) */
+    /* Content offsets under overlay PNGs (smaller = higher content) */
     --paid-offset-mobile: 260px;
     --paid-offset-desktop: 330px;
+    --unpaid-offset-mobile: 300px;
+    --unpaid-offset-desktop: 340px;
 
     /* Overlay PNG distance from top */
     --overlay-top: 10px;
@@ -38,18 +40,22 @@
 
   /* Content under PNG */
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; }
-  body.paid .content-wrap{ margin-top:var(--paid-offset-mobile); }
-  @media (min-width:1200px){ body.paid .content-wrap{ margin-top:var(--paid-offset-desktop);} }
-  body.unpaid .content-wrap{ margin-top:0; }
-
-  /* Unpaid: Pay section IN FLOW, approx middle of screen on load */
-  .pay-section{
-    min-height:55vh;            /* starts near vertical middle */
-    display:flex;
-    align-items:center;         /* vertical centering within this section */
-    justify-content:center;     /* horizontal centering */
+  body.paid   .content-wrap{   margin-top:var(--paid-offset-mobile); }
+  body.unpaid .content-wrap{   margin-top:var(--unpaid-offset-mobile); }
+  @media (min-width:1200px){
+    body.paid   .content-wrap{ margin-top:var(--paid-offset-desktop); }
+    body.unpaid .content-wrap{ margin-top:var(--unpaid-offset-desktop); }
   }
-  .pay-section .lead{ max-width:720px; margin:0 auto 18px; text-shadow:0 2px 10px rgba(0,0,0,.45); }
+
+  /* Unpaid: Pay section stays connected to content */
+  .pay-section{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    text-align:center;
+    margin-top:16px;
+    min-height:0;
+  }
 
   /* Map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
@@ -98,11 +104,9 @@
   <!-- Page -->
   <div class="page">
     <div class="content-wrap">
-      <!-- UNPAID: Pay section (in flow, centered-ish on load) -->
+      <!-- UNPAID: Pay section (in flow) -->
       <div id="pay-section" class="pay-section" style="display:none;">
         <div class="text-center">
-          <!-- optional line you can remove if the PNG already carries all copy -->
-          <!-- <p class="lead">Access all features: GPS alerts, location audio, and the full camera list.</p> -->
           <a id="payCTA" class="btn btn-primary btn-lg" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Pay $12</a>
         </div>
       </div>
@@ -142,8 +146,12 @@ window.addEventListener('load', () => {
   if (document.activeElement) document.activeElement.blur();
 });
 
-/* ---------- Paid/unpaid toggle & overlay swap ---------- */
+/* ---------- URL toggles so you can force modes ---------- */
 const q = new URLSearchParams(location.search);
+if (q.has('reset') || q.has('free')) localStorage.removeItem('paid');
+if (q.has('forcePaid')) localStorage.setItem('paid','true');
+
+/* ---------- Paid/unpaid toggle & overlay swap ---------- */
 if (q.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(null,'',location.pathname); }
 const isPaid = localStorage.getItem('paid') === 'true';
 document.body.classList.toggle('paid',  isPaid);
@@ -221,7 +229,7 @@ function initMap(){
   document.getElementById('map').setAttribute('tabindex','-1');
 }
 
-/* ---------- Audio (unchanged) ---------- */
+/* ---------- Audio ---------- */
 const AUDIO_BASE = 'images/audio/';
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
@@ -274,7 +282,19 @@ const LOC = {
 function pick(a){return a[Math.floor(Math.random()*a.length)]}
 function playFile(f){ new Audio(AUDIO_BASE+f).play().catch(()=>{}); }
 function playLocationOnly(name){ const f=LOC[name]; if(f) playFile(f); }
-function playChain(files){ if(!files.length) return; const a=new Audio(AUDIO_BASE+files[0]); a.play().catch(()=>{}); a.onended=()=>playChain(files.slice(1)); }
+
+// guard against rapid re-play on jitter
+let __playing = false;
+function playChain(files){
+  if(!files.length || __playing) return;
+  __playing = true;
+  const a=new Audio(AUDIO_BASE+files[0]);
+  a.play().catch(()=>{});
+  a.onended=()=>{
+    if(files.length>1) playChain(files.slice(1));
+    else setTimeout(()=>{ __playing=false; }, 250);
+  };
+}
 function playGeofenceAlert(name){ const f=LOC[name]; if(!f) return; playChain([pick(STEMS), f, pick(TAGS)]); if(navigator.vibrate) navigator.vibrate([250,100,250]); }
 
 /* ---------- SPEED LIMIT sign ---------- */
@@ -295,7 +315,7 @@ const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
 const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
 const CACHE_KEY = 'sf_ase_corridors_v1'; // bump to refresh
 
-let CORRIDOR_INDEX = new Map(); // name -> { line, speed, dir }
+let CORRIDOR_INDEX = new Map(); // name -> { line, buffer, speed, dir }
 function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
 
 async function fetchLiveCorridors(){
@@ -322,29 +342,55 @@ async function ensureCorridors(){
     const props = feat.properties || {};
     let geom = feat.geometry;
     if(!geom) return;
+
+    // Normalize to a single LineString (take the longest if MultiLineString)
     if(geom.type==='MultiLineString'){
       geom = { type:'LineString', coordinates: geom.coordinates.sort((a,b)=>b.length-a.length)[0] };
     }
     if(geom.type!=='LineString') return;
+
     const nameRaw = getProp(props, NAME_FIELDS);
     const name = nameRaw ? String(nameRaw).trim() : null;
     if(!name) return;
+
     const speed = Number(getProp(props, SPEED_FIELDS));
+    const line  = geom;
+
+    // Build a thin buffer polygon for “inside street” checks
+    const bufferM = 20; // tune 18–25m
+    let buffered = null;
+    try{
+      buffered = turf.buffer(line, bufferM, { units:'meters' });
+    }catch(e){
+      // If buffer fails for any bad geometry, skip buffer but keep line
+    }
+
+    CORRIDOR_INDEX.set(name, {
+      line,
+      buffer: buffered,
+      speed: Number.isFinite(speed)?speed:null,
+      dir: props.Direction || props.DIRECTION || null
+    });
+
     if(Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
-    CORRIDOR_INDEX.set(name, { line: geom, speed: Number.isFinite(speed)?speed:null, dir: props.Direction || props.DIRECTION || null });
   });
 }
 
-/* ---------- Geofencing (polyline if available; else point) ---------- */
-const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
+/* ---------- Geofencing helpers ---------- */
+const ENTER_M = 25, EXIT_M = 45, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
+
 function toRad(d){return d*Math.PI/180}
-function distKm(aLat,aLon,bLat,bLon){ const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon); const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2; return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s)); }
-async function distanceToCorridor(name,lngLat){
-  const e = CORRIDOR_INDEX.get(name);
-  if(e && e.line) return turf.pointToLineDistance(turf.point(lngLat), e.line, { units:'meters' });
-  const cam = cameras.find(c=>c.name===name); if(!cam) return Infinity;
-  return distKm(lngLat[1],lngLat[0],cam.lat,cam.lon)*1000;
+function distKm(aLat,aLon,bLat,bLon){
+  const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
+}
+function passesGates(coords){
+  const {accuracy,speed}=coords;
+  if(accuracy && accuracy>MAX_ACC_M) return false;
+  if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
+  return true;
 }
 function headingMatches(headingDeg, dir){
   if(!dir || typeof headingDeg!=='number') return true;
@@ -353,11 +399,44 @@ function headingMatches(headingDeg, dir){
   const diff = Math.min(Math.abs(headingDeg-tgt), 360-Math.abs(headingDeg-tgt));
   return diff <= 60;
 }
-function passesGates(coords){ const {accuracy,speed}=coords; if(accuracy && accuracy>MAX_ACC_M) return false; if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false; return true; }
+function inCorridorBuffer(name, lngLat){
+  const e = CORRIDOR_INDEX.get(name);
+  if (!e || !e.buffer) return false;
+  return turf.booleanPointInPolygon(turf.point(lngLat), e.buffer);
+}
+async function corridorDistanceM(name, lngLat){
+  const e = CORRIDOR_INDEX.get(name);
+  if(e && e.line) return turf.pointToLineDistance(turf.point(lngLat), e.line, { units:'meters' });
+  const cam = cameras.find(c=>c.name===name); if(!cam) return Infinity;
+  return distKm(lngLat[1],lngLat[0],cam.lat,cam.lon)*1000;
+}
+/* Segment-bearing approach filter: align user heading with local corridor direction */
+function headingAlignsWithLine(name, lngLat, userHeading){
+  const e = CORRIDOR_INDEX.get(name);
+  if (!e || !e.line || typeof userHeading !== 'number') return true;
 
+  const pt = turf.point(lngLat);
+  const snapped = turf.nearestPointOnLine(e.line, pt);
+  const idx = snapped.properties.index;
+  const coords = e.line.coordinates;
+
+  const a = coords[Math.max(0, idx - 1)];
+  const b = coords[Math.min(coords.length - 1, idx + 1)];
+  if (!a || !b) return true;
+
+  const segBearing = turf.bearing(turf.point(a), turf.point(b)); // -180..180
+  const user = ((userHeading % 360) + 360) % 360;
+  const seg  = ((segBearing  % 360) + 360) % 360;
+  const diff = Math.min(Math.abs(user - seg), 360 - Math.abs(user - seg));
+  return diff <= 60;
+}
+
+/* ---------- Geofencing (polyline + buffer + direction + bearing) ---------- */
 function startGPS(){
   if(!('geolocation' in navigator)) return;
   if(window.__watchId!=null) return;
+
+  // kick the audio subsystem once for iOS autoplay
   const a=new Audio(); a.play().catch(()=>{});
 
   window.__watchId = navigator.geolocation.watchPosition(async pos=>{
@@ -367,14 +446,25 @@ function startGPS(){
 
     for(const cam of cameras){
       const ent = CORRIDOR_INDEX.get(cam.name);
-      if(ent && ent.dir && !headingMatches(heading, ent.dir)) continue;
+      if(!ent) continue;
 
-      const dM = await distanceToCorridor(cam.name, lngLat);
-      const inZone = dM <= ENTER_M, wasIn = insideNow.has(cam.name);
+      // 1) Direction tag gate (NB/EB/etc)
+      if (ent.dir && !headingMatches(heading, ent.dir)) continue;
 
-      if(!wasIn && inZone){
+      // 2) Segment-bearing alignment gate
+      if (!headingAlignsWithLine(cam.name, lngLat, heading)) continue;
+
+      // 3) Corridor membership + distance with hysteresis
+      const inside = inCorridorBuffer(cam.name, lngLat);
+      const dM = inside ? 0 : await corridorDistanceM(cam.name, lngLat);
+
+      const wasIn = insideNow.has(cam.name);
+      const entering = (!wasIn) && (inside || dM <= ENTER_M);
+      const exiting  = wasIn && (!inside && dM > EXIT_M);
+
+      if (entering) {
         const last = lastAlertAt.get(cam.name)||0;
-        if(now-last>COOLDOWN_MS){
+        if (now-last > COOLDOWN_MS) {
           playGeofenceAlert(cam.name);
           const limit = (ent && ent.speed) || SPEED_LIMITS[cam.name];
           showSpeedSign(limit);
@@ -382,7 +472,7 @@ function startGPS(){
         }
         insideNow.add(cam.name);
         currentZone = cam.name;
-      } else if (wasIn && dM > EXIT_M){
+      } else if (exiting) {
         insideNow.delete(cam.name);
         if (currentZone === cam.name){ currentZone = null; hideSpeedSign(); }
       }
