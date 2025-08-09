@@ -3,9 +3,24 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
-<title>SF Speed Cameras — Alerts & Map</title>
+<title>SF Speed Cameras – Pro</title>
 
-<!-- CSS/JS deps -->
+<!-- ONE-TIME RECOVERY: kill old SW + caches, then hard reload once -->
+<script>
+(function(){
+  const BUSTER='recover-2025-08-09-1';
+  if(localStorage.getItem('cache_buster')===BUSTER) return;
+  localStorage.setItem('cache_buster',BUSTER);
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistrations().then(rs=>rs.forEach(r=>r.unregister()));
+  }
+  if(window.caches && caches.keys){
+    caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k))));
+  }
+  setTimeout(()=>location.replace(location.pathname+'?forcePaid'),300);
+})();
+</script>
+
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -13,19 +28,14 @@
 
 <style>
   :root{
-    /* Content offsets (how far below the overlay the content starts) */
+    --overlay-top: 10px;
     --paid-offset-mobile: 260px;
     --paid-offset-desktop: 330px;
-    --unpaid-offset-mobile: 300px;
-    --unpaid-offset-desktop: 340px;
 
-    /* Overlay PNG distance from top */
-    --overlay-top: 10px;
-
-    /* Colors for the 3-state toggle */
-    --state-off:   #dc3545; /* red */
-    --state-gps:   #ffc107; /* yellow */
-    --state-on:    #28a745; /* green */
+    /* button colors */
+    --state-off:#dc3545;  /* red */
+    --state-gps:#ffc107;  /* yellow */
+    --state-on:#28a745;   /* green */
   }
 
   html, body { height:100%; }
@@ -36,107 +46,108 @@
   .page { flex:1 0 auto; position:relative; }
   footer { flex:0 0 auto; padding:14px 0 18px; text-align:center; }
 
-  /* Background video */
+  /* background video centered forever */
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* Overlay PNGs (do NOT block taps) */
+  /* overlay PNGs */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
-  /* Content under overlay */
-  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; }
-  body.paid   .content-wrap{   margin-top:var(--paid-offset-mobile); }
-  body.unpaid .content-wrap{   margin-top:var(--unpaid-offset-mobile); }
+  /* content is pushed under the PNGs */
+  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){
-    body.paid   .content-wrap{ margin-top:var(--paid-offset-desktop); }
-    body.unpaid .content-wrap{ margin-top:var(--unpaid-offset-desktop); }
+    .content-wrap{ margin-top:var(--paid-offset-desktop); }
   }
 
-  /* Unpaid trial section */
-  .pay-section{
-    display:flex; align-items:center; justify-content:center; text-align:center;
-    margin-top:16px; min-height:0;
-  }
-
-  /* Map & List */
-  #map{ height:60vh; border:1px solid #222; border-radius:10px; background:rgba(255,255,255,.08); }
+  /* map + list */
+  #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:220px; overflow-y:auto; }
-  .card { background:rgba(255,255,255,0.06); border-color:rgba(255,255,255,0.1); }
 
-  /* Gate */
-  .premium-content{ display:none; }
+  /* 3-state button */
+  #modeBtn{
+    border:0; font-weight:800; color:#000; padding:.4rem .75rem; border-radius:.5rem;
+  }
+  #modeBtn.state-off{ background:var(--state-off); color:#fff; }
+  #modeBtn.state-gps{ background:var(--state-gps); color:#111; }
+  #modeBtn.state-on { background:var(--state-on);  color:#fff; }
 
-  /* 3-state toggle button */
-  #stateBtn{ border-width:2px; color:#fff; font-weight:800; }
-  #stateBtn.off   { background:var(--state-off); border-color:var(--state-off); }
-  #stateBtn.gps   { background:var(--state-gps); border-color:var(--state-gps); color:#222; }
-  #stateBtn.on    { background:var(--state-on);  border-color:var(--state-on);  }
-  #stateBtn .hint{ font-weight:700; opacity:.9; }
-
-  /* SPEED LIMIT sign */
+  /* speed sign */
   .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
   .speed-sign.show { opacity:1; transform:translateX(-50%) translateY(0); }
-  .speed-sign .sign{ background:#fff; color:#000; border:4px solid #000; border-radius:12px; width:min(46vw, 280px); padding:10px 14px 12px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
+  .speed-sign .sign{ background:#fff; color:#000; border:4px solid #000; border-radius:10px; width:min(46vw, 280px); padding:10px 14px 12px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
   .speed-sign .label{ font-weight:800; letter-spacing:.06em; text-align:center; font-size:14px; margin-bottom:4px; }
   .speed-sign .value{ font-weight:900; text-align:center; font-size:clamp(56px, 16vw, 110px); line-height:1; }
   .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
   .speed-sign.unknown .capsule{ display:inline-block; }
 
-  /* Nag popup (Ad1/Ad2) */
-  .nag-wrap{ position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:1000; }
-  .nag-dim{ position:absolute; inset:0; background:rgba(0,0,0,0.66); }
-  .nag-panel{ position:relative; z-index:1001; max-width:min(92vw, 640px); }
-  .nag-panel img{ width:120%; max-width:120%; transform:translateX(-10%); /* +20% size */ height:auto; border-radius:10px; display:block; }
-  .nag-cta{ position:absolute; inset:0; } /* whole image clickable */
-  .nag-timer{ position:absolute; right:10px; bottom:10px; background:rgba(0,0,0,.6); padding:6px 10px; border-radius:8px; font-weight:800; }
+  /* nag popup */
+  .nag-wrap{
+    position:fixed; left:0; right:0; top:25px; /* lowered 25px per ask */
+    display:flex; justify-content:center; z-index:1000; pointer-events:none;
+  }
+  .nag{
+    pointer-events:auto; background:transparent; border:none; padding:0; margin:0;
+  }
+  .nag img{
+    width:min(92vw, 560px); /* +20% bigger look */
+    max-width:100%;
+    height:auto; display:block;
+    box-shadow:0 20px 60px rgba(0,0,0,.55);
+  }
+  .nag .close-x{
+    position:absolute; top:6px; right:10px; background:rgba(0,0,0,.5); color:#fff; border:none;
+    width:32px; height:32px; border-radius:999px; font-weight:900; display:flex; align-items:center; justify-content:center;
+    cursor:pointer;
+  }
+
+  /* follow marker styles (user) */
+  .loc-accuracy{
+    stroke:#1f6feb; stroke-opacity:.6; fill:#1f6feb; fill-opacity:.12;
+  }
+  .loc-dot{
+    background:#1f6feb; width:14px; height:14px; border-radius:50%; border:2px solid #fff;
+    box-shadow:0 0 0 3px rgba(31,111,235,.35);
+  }
+  .leaflet-user-dot{
+    width:18px; height:18px; display:inline-block;
+  }
 </style>
 </head>
 <body>
-  <!-- Background video -->
+
+  <!-- background video -->
   <div class="video-bg">
     <video id="bgvid" autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
-      <source src="videos/background.mp4" type="video/mp4">
+      <source src="videos/background.mp4?v=2025-08-09-1" type="video/mp4">
     </video>
   </div>
 
-  <!-- Overlay PNGs -->
-  <div class="overlay-layer" id="overlay">
-    <!-- UNPAID art -->
-    <picture id="overlay-free">
-      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile.png">
-      <img src="images/Copyblockdesktop.png" alt="SF Speed Cameras">
-    </picture>
-    <!-- PAID art -->
-    <picture id="overlay-paid" style="display:none;">
-      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png">
-      <img src="images/Copyblockdesktop_paid.png" alt="SF Speed Cameras (Pro)">
+  <!-- overlay art (PAID) -->
+  <div class="overlay-layer">
+    <picture id="overlay-paid">
+      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png?v=2025-08-09-1">
+      <img src="images/Copyblockdesktop_paid.png?v=2025-08-09-1" alt="SF Speed Cameras (Pro)">
     </picture>
   </div>
 
-  <!-- Page -->
+  <!-- page -->
   <div class="page">
     <div class="content-wrap">
-      <!-- Unpaid: trial section (in flow) -->
-      <div id="pay-section" class="pay-section" style="display:none;">
-        <div class="text-center">
-          <a id="payCTA" class="btn btn-primary btn-lg" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Go Pro</a>
-        </div>
+      <!-- top row: 3-state button + Go Pro (Stripe) -->
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <button id="modeBtn" class="state-off" aria-pressed="false" aria-label="Sound and GPS mode">Sound &amp; GPS: Off</button>
+        <a class="btn btn-primary btn-sm" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Go Pro</a>
       </div>
 
-      <!-- Paid content -->
-      <div id="premium-content" class="premium-content">
-        <button id="stateBtn" class="btn btn-sm off mb-3" aria-pressed="false" aria-live="polite">
-          <span class="label">Sound &amp; GPS:</span> <span class="hint">Off</span>
-        </button>
+      <!-- map -->
+      <div id="map" class="mb-3" tabindex="-1" aria-label="Map of camera corridors"></div>
 
-        <div id="map" class="mb-3" tabindex="-1"></div>
-
-        <div id="list" class="card mb-3">
-          <div class="card-header">Camera Locations</div>
-          <ul class="list-group camera-list"></ul>
-        </div>
+      <!-- list -->
+      <div id="list" class="card mb-3">
+        <div class="card-header">Camera Locations</div>
+        <ul class="list-group camera-list"></ul>
       </div>
     </div>
   </div>
@@ -150,13 +161,16 @@
     </div>
   </div>
 
-  <!-- Trial Nag Popup -->
-  <div id="nag" class="nag-wrap" role="dialog" aria-modal="true" aria-label="Upgrade to Pro">
-    <div class="nag-dim"></div>
-    <div class="nag-panel">
-      <img id="nagImg" src="images/Ad1.png" alt="Go Pro — Full Features, No Ads">
-      <a class="nag-cta" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" aria-label="Go Pro"></a>
-      <div id="nagTimer" class="nag-timer">25</div>
+  <!-- nag popup (hidden initially) -->
+  <div id="nagWrap" class="nag-wrap" style="display:none;">
+    <div class="nag position-relative">
+      <button id="nagClose" class="close-x" aria-label="Close popup" disabled>×</button>
+      <a id="nagLink" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">
+        <img id="nagImg" src="images/Ad1.png?v=2025-08-09-1" alt="Upgrade prompt">
+      </a>
+      <audio id="nagAudio" preload="auto">
+        <source src="images/audio/Ad1.mp3?v=2025-08-09-1" type="audio/mpeg">
+      </audio>
     </div>
   </div>
 
@@ -166,89 +180,69 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* ---------- Basic scroll / URL controls ---------- */
+/* -------------------------------------------------
+   HARD SETTINGS
+--------------------------------------------------*/
+const ARCGIS_CORRIDORS =
+  'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
+
+const AUDIO_BASE = 'images/audio/'; // your repo path
+const STRIPE_URL = 'https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01';
+
+/* -------------------------------------------------
+   BOOT: always paid, no SW, kill jumps
+--------------------------------------------------*/
 try { history.scrollRestoration = 'manual'; } catch {}
 if (location.hash) { history.replaceState(null, '', location.pathname); }
-window.addEventListener('load', () => { window.scrollTo(0, 0); if (document.activeElement) document.activeElement.blur(); });
+window.addEventListener('load', () => { window.scrollTo(0,0); });
 
 const q = new URLSearchParams(location.search);
-if (q.has('reset') || q.has('free')) localStorage.removeItem('paid');
 if (q.has('forcePaid')) localStorage.setItem('paid','true');
-if (q.has('paid')) { localStorage.setItem('paid','true'); history.replaceState(null,'',location.pathname); }
 
-const isPaid = localStorage.getItem('paid') === 'true';
-document.body.classList.toggle('paid',  isPaid);
-document.body.classList.toggle('unpaid',!isPaid);
-
-function overlaySwap(paid){
-  document.getElementById('overlay-free').style.display = paid?'none':'block';
-  document.getElementById('overlay-paid').style.display = paid?'block':'none';
+/* -------------------------------------------------
+   AUDIO: single global player, no overlaps
+--------------------------------------------------*/
+let audioUnlocked = false;
+function unlockAudio(){
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+  try {
+    const a = new Audio(); a.muted = true; a.play().catch(()=>{});
+  } catch(_){}
 }
-overlaySwap(isPaid);
-document.getElementById('premium-content').style.display = isPaid ? 'block' : 'none';
-document.getElementById('pay-section').style.display   = isPaid ? 'none'  : 'block';
+['touchstart','click'].forEach(ev => document.addEventListener(ev, unlockAudio, {passive:true, once:false}));
 
-/* ---------- Video loop & size ---------- */
-const bg = document.getElementById('bgvid');
-bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
-function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
-window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
+const player = new Audio(); // single player for all short clips
+player.preload = 'auto';
+let chainQueue = [];
+player.addEventListener('ended', ()=>{
+  if (chainQueue.length) {
+    const next = chainQueue.shift();
+    player.src = next;
+    player.play().catch(()=>{});
+  }
+});
 
-/* ---------- Map init ---------- */
-let map, userMarker, userAccCircle, corridorsL, buffersL, polesL;
-let followUser = false;
-function initMap(){
-  map = L.map('map', { zoomControl:true, preferCanvas:true }).setView([37.7749,-122.4194],12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap' }).addTo(map);
-
-  // Layers for data
-  corridorsL = L.geoJSON(null, { style: { color:'#2db0ff', weight:4, opacity:0.9 } }).addTo(map);
-  buffersL   = L.geoJSON(null, { style: { color:'#2db0ff', weight:1, opacity:0.5, fillOpacity:0.10 } }).addTo(map);
-  polesL     = L.layerGroup().addTo(map);
-
-  // User dot (distinct style)
-  const userStyle = { radius:7, color:'#000', weight:2, fillColor:'#00e0ff', fillOpacity:1.0 };
-  userMarker = L.circleMarker([37.7749,-122.4194], userStyle).addTo(map);
-  userAccCircle = L.circle([37.7749,-122.4194], {radius:0, color:'#00e0ff', opacity:.35, fillOpacity:0.08}).addTo(map);
-
-  document.getElementById('map').setAttribute('tabindex','-1');
-}
-
-/* ---------- Audio Manager (no overlaps site-wide) ---------- */
-const AUDIO_BASE = 'images/audio/';
-let currentAudio = null;
-function stopAudio(){
-  if (currentAudio){ try{ currentAudio.pause(); currentAudio.currentTime = 0; }catch{} currentAudio = null; }
-}
-function playSingle(file, {force=false}={}){
+function playNow(fileUrl){
   try{
-    // Force allows playing even if muted (used by the nag)
-    if (!force && !state.soundOn) return;
-    stopAudio();
-    currentAudio = new Audio(AUDIO_BASE + file);
-    currentAudio.play().catch(()=>{});
-  }catch{}
+    player.pause();
+    player.currentTime = 0;
+    chainQueue.length = 0;
+    player.src = fileUrl;
+    player.play().catch(()=>{});
+  }catch(_){}
 }
-function playChainSequential(files){
-  // respects mute unless force handled by caller
-  if (!state.soundOn) return;
-  stopAudio();
-  let i=0;
-  const a = new Audio(AUDIO_BASE + files[i]);
-  currentAudio = a;
-  a.onended = ()=>{
-    i++;
-    if (i<files.length){
-      const n = new Audio(AUDIO_BASE + files[i]);
-      currentAudio = n;
-      n.onended = a.onended;
-      n.play().catch(()=>{});
-    }
-  };
-  a.play().catch(()=>{});
+function playChain(files){
+  try{
+    player.pause();
+    player.currentTime = 0;
+    chainQueue = files.slice(1).map(f=>AUDIO_BASE+f);
+    player.src = AUDIO_BASE + files[0];
+    player.play().catch(()=>{});
+  }catch(_){}
 }
 
-/* ---------- VO filenames ---------- */
+/* fun lines and location mapping (unchanged list) */
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
   'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
@@ -262,352 +256,304 @@ const TAGS = [
   'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
   'brakes_are_a_good_good_friend.mp3'
 ];
-const LOC = {
-  "Fulton Street from 42nd to 43rd Ave":"fulton_street_from_42nd_to_43rd_ave.mp3",
-  "Lincoln Way from 27th to 28th Ave":"lincoln_way_from_27th_to_28th_ave.mp3",
-  "Geary Blvd from 7th to 8th Ave":"geary_blvd_from_7th_to_8th_ave.mp3",
-  "Fulton St from 2nd Ave to Arguello Blvd":"fulton_st_from_2nd_ave_to_arguello_blvd.mp3",
-  "Geary Blvd from Webster to Buchanan St":"geary_blvd_from_webster_to_buchanan_st.mp3",
-  "Turk St from Van Ness Ave to Polk St":"turk_st_from_van_ness_ave_to_polk_st.mp3",
-  "Bay St from Octavia to Gough St":"bay_st_from_octavia_to_gough_st.mp3",
-  "Franklin St from Union to Green St":"franklin_st_from_union_to_green_st.mp3",
-  "Columbus Ave from Lombard to Greenwich St":"columbus_ave_from_lombard_to_greenwich_st.mp3",
-  "Broadway from Powell to Stockton St":"broadway_from_powell_to_stockton_st.mp3",
-  "The Embarcadero from Green to Battery St":"the_embarcadero_from_green_to_battery_st.mp3",
-  "Mission St from 8th to 9th St":"mission_st_from_8th_to_9th_st.mp3",
-  "10th St from Harrison to Folsom St":"10th_st_from_harrison_to_folsom_st.mp3",
-  "9th St from Bryant to Harrison St":"9th_st_from_bryant_to_harrison_st.mp3",
-  "7th St from Harrison to Folsom St":"7th_st_from_harrison_to_folsom_st.mp3",
-  "Harrison St from 4th to 5th St":"harrison_st_from_4th_to_5th_st.mp3",
-  "Bryant St from 2nd to 3rd St":"bryant_st_from_2nd_to_3rd_st.mp3",
-  "King St (EB only) from 4th to 5th St":"king_st_eb_only_from_4th_to_5th_st.mp3",
-  "Market St from Danvers to Douglass St":"market_st_from_danvers_to_douglass_st.mp3",
-  "Guerrero St from 19th to 20th St":"guerrero_st_from_19th_to_20th_st.mp3",
-  "16th St from Bryant St to Potrero Ave":"16th_st_from_bryant_st_to_potrero_ave.mp3",
-  "San Jose Ave from 29th to 30th St":"san_jose_ave_from_29th_to_30th_st.mp3",
-  "Cesar Chavez St from Folsom to Harrison St":"cesar_chavez_st_from_folsom_to_harrison_st.mp3",
-  "Cesar Chavez St from Indiana to Tennessee St":"cesar_chavez_st_from_indiana_to_tennessee_st.mp3",
-  "3rd St (NB only) from Key to Jamestown Ave":"3rd_st_nb_only_from_key_to_jamestown_ave.mp3",
-  "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave":"bayshore_blvd_sb_only_from_101_off_ramp_to_tunnel_ave.mp3",
-  "Geneva Ave from Prague St to Brookdale Ave":"geneva_ave_from_prague_st_to_brookdale_ave.mp3",
-  "Mission St from Ottawa Ave to Allison St":"mission_st_from_ottawa_ave_to_allison_st.mp3",
-  "Alemany Blvd from Farragut to Naglee Ave":"alemany_blvd_from_farragut_to_naglee_ave.mp3",
-  "Ocean Ave from Frida Kahlo Way to Howth St":"ocean_ave_from_frida_kahlo_way_to_howth_st.mp3",
-  "San Jose Ave from Santa Ynez to Ocean Ave":"san_jose_ave_from_santa_ynez_to_ocean_ave.mp3",
-  "Monterey Blvd from Edna to Congo St":"monterey_blvd_from_edna_to_congo_st.mp3",
-  "Sloat Blvd from 41st Ave to Skyline Blvd":"sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
-};
 function pick(a){ return a[Math.floor(Math.random()*a.length)] }
-function playLocationOnly(name){ const f=LOC[name]; if(f) playSingle(f); }
-function playGeofenceAlert(name){
-  const f=LOC[name]; if(!f) return;
-  // Chain respects mute; the user asked for GPS alerts to obey sound state
-  playChainSequential([ pick(STEMS), f, pick(TAGS) ]);
-  if (navigator.vibrate) navigator.vibrate([250,100,250]);
-}
 
-/* ---------- SPEED LIMIT sign ---------- */
-const SPEED_LIMITS = {}; // from ArcGIS
-let currentZone = null;
-function showSpeedSign(limit){
-  const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
-  if (!box || !val) return;
-  if (Number.isFinite(limit)){ val.textContent = String(limit); box.classList.remove('unknown'); }
-  else { val.textContent = '--'; box.classList.add('unknown'); }
-  box.hidden = false; box.classList.add('show');
-}
-function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
+/* your 33 points (kept for list clicks & map centering) */
+const cameras = [
+  {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
+  {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
+  {name:"Geary Blvd from 7th to 8th Ave",lat:37.7805,lon:-122.4660},
+  {name:"Fulton St from 2nd Ave to Arguello Blvd",lat:37.7735,lon:-122.4550},
+  {name:"Geary Blvd from Webster to Buchanan St",lat:37.7845,lon:-122.4310},
+  {name:"Turk St from Van Ness Ave to Polk St",lat:37.7820,lon:-122.4195},
+  {name:"Bay St from Octavia to Gough St",lat:37.8040,lon:-122.4230},
+  {name:"Franklin St from Union to Green St",lat:37.8000,lon:-122.4235},
+  {name:"Columbus Ave from Lombard to Greenwich St",lat:37.8025,lon:-122.4135},
+  {name:"Broadway from Powell to Stockton St",lat:37.7975,lon:-122.4075},
+  {name:"The Embarcadero from Green to Battery St",lat:37.8070,lon:-122.4005},
+  {name:"Mission St from 8th to 9th St",lat:37.7740,lon:-122.4110},
+  {name:"10th St from Harrison to Folsom St",lat:37.7715,lon:-122.4115},
+  {name:"9th St from Bryant to Harrison St",lat:37.7725,lon:-122.4090},
+  {name:"7th St from Harrison to Folsom St",lat:37.7745,lon:-122.4065},
+  {name:"Harrison St from 4th to 5th St",lat:37.7795,lon:-122.4015},
+  {name:"Bryant St from 2nd to 3rd St",lat:37.7820,lon:-122.3965},
+  {name:"King St (EB only) from 4th to 5th St",lat:37.7775,lon:-122.3940},
+  {name:"Market St from Danvers to Douglass St",lat:37.7615,lon:-122.4320},
+  {name:"Guerrero St from 19th to 20th St",lat:37.7590,lon:-122.4230},
+  {name:"16th St from Bryant St to Potrero Ave",lat:37.7650,lon:-122.4075},
+  {name:"San Jose Ave from 29th to 30th St",lat:37.7435,lon:-122.4235},
+  {name:"Cesar Chavez St from Folsom to Harrison St",lat:37.7480,lon:-122.4035},
+  {name:"Cesar Chavez St from Indiana to Tennessee St",lat:37.7505,lon:-122.3900},
+  {name:"3rd St (NB only) from Key to Jamestown Ave",lat:37.7275,lon:-122.3885},
+  {name:"Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave",lat:37.7100,lon:-122.3990},
+  {name:"Geneva Ave from Prague St to Brookdale Ave",lat:37.7130,lon:-122.4405},
+  {name:"Mission St from Ottawa Ave to Allison St",lat:37.7145,lon:-122.4400},
+  {name:"Alemany Blvd from Farragut to Naglee Ave",lat:37.7320,lon:-122.4425},
+  {name:"Ocean Ave from Frida Kahlo Way to Howth St",lat:37.7235,lon:-122.4525},
+  {name:"San Jose Ave from Santa Ynez to Ocean Ave",lat:37.7280,lon:-122.4430},
+  {name:"Monterey Blvd from Edna to Congo St",lat:37.7315,lon:-122.4650},
+  {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
+];
 
-/* ---------- ArcGIS (corridors + buffers + poles) ---------- */
-const ARCGIS_ROOT = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer';
-const CORRIDOR_LAYER = 4;
-const TRY_POINT_LAYERS = [0,1,2,3,5,6];
-const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
-const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
-function pickProp(obj, keys){ for(const k of keys){ if(obj && obj[k]!=null && obj[k]!=='') return obj[k]; } return null; }
-
-let CORRIDOR_INDEX = new Map(); // name -> { line, buffer, center, speed, dir }
-
-async function fetchGeoJSON(layer){
-  const url = `${ARCGIS_ROOT}/${layer}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
-  const r = await fetch(url, {cache:'no-store'}); if(!r.ok) throw new Error('ArcGIS fetch failed '+layer);
-  return r.json();
-}
-
-async function loadCorridors(){
-  const fc = await fetchGeoJSON(CORRIDOR_LAYER);
-  CORRIDOR_INDEX.clear(); corridorsL.clearLayers(); buffersL.clearLayers();
-
-  (fc.features||[]).forEach(f=>{
-    let g = f.geometry; if(!g) return;
-    if (g.type==='MultiLineString'){
-      g = { type:'LineString', coordinates: g.coordinates.sort((a,b)=>b.length-a.length)[0] };
-    }
-    if (g.type!=='LineString') return;
-
-    const props = f.properties || {};
-    const rawName = pickProp(props, NAME_FIELDS); if(!rawName) return;
-    const name = String(rawName).trim();
-    const speed = Number(pickProp(props, SPEED_FIELDS));
-    const dir   = props.Direction || props.DIRECTION || null;
-
-    const line = turf.lineString(g.coordinates);
-    corridorsL.addData(line);
-
-    let buff = null;
-    try { buff = turf.buffer(line, 20, { units:'meters' }); buffersL.addData(buff); } catch {}
-    const bb = turf.bbox(line); const center = [(bb[0]+bb[2])/2, (bb[1]+bb[3])/2];
-
-    if (Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
-    CORRIDOR_INDEX.set(name, { line, buffer:buff, center, speed:Number.isFinite(speed)?speed:null, dir });
+/* map */
+let map, userDot, userCircle;
+function makeUserMarker(){
+  const div = L.divIcon({ className:'leaflet-user-dot', html:'<div class="loc-dot"></div>', iconSize:[18,18], iconAnchor:[9,9] });
+  userDot = L.marker([37.7749,-122.4194], { icon: div });
+  userCircle = L.circle([37.7749,-122.4194], {
+    radius: 30, className:'loc-accuracy'
   });
-
-  buffersL.bringToBack(); corridorsL.bringToFront();
+  userDot.addTo(map);
+  userCircle.addTo(map);
 }
 
-async function loadPoles(){
-  polesL.clearLayers();
-  let anyPoints = false;
-  for (const lyr of TRY_POINT_LAYERS){
-    try{
-      const fc = await fetchGeoJSON(lyr);
-      (fc.features||[]).forEach(f=>{
-        if (!f.geometry || f.geometry.type!=='Point') return;
-        anyPoints = true;
-        const p = f.properties||{};
-        const name = String(pickProp(p, NAME_FIELDS) ?? '').trim();
-        const [x,y] = f.geometry.coordinates;
+function initMap(){
+  map = L.map('map', {zoomControl:true}).setView([37.7749,-122.4194], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
-        const m = L.circleMarker([y,x], { radius:6, color:'#111', weight:2, fillColor:'#ff3b3b', fillOpacity:0.95 });
-        m.bindPopup(name || 'Speed camera pole');
-        polesL.addLayer(m);
-
-        if (name && CORRIDOR_INDEX.has(name) && !CORRIDOR_INDEX.get(name).center){
-          CORRIDOR_INDEX.get(name).center = [x,y];
-        }
-      });
-    }catch(e){ /* layer not present; continue */ }
-  }
-  buffersL.bringToBack(); corridorsL.bringToFront(); polesL.bringToFront();
-  if (!anyPoints) console.warn('No pole points found in ArcGIS – running corridors-only.');
-}
-
-/* ---------- Build list from ArcGIS names ---------- */
-function setList(names){
-  const ul = document.querySelector('.camera-list'); if (!ul) return;
-  ul.innerHTML = '';
-  names.forEach(n=>{
-    const li = document.createElement('li');
+  // list (click plays location-only + centers map)
+  const ul = document.querySelector('.camera-list');
+  cameras.forEach(c=>{
+    const li=document.createElement('li');
     li.className='list-group-item';
-    li.textContent=n;
-    li.addEventListener('click', ()=>{
-      const ent = CORRIDOR_INDEX.get(n);
-      if (ent?.center) map.setView([ent.center[1], ent.center[0]], 15);
-      playLocationOnly(n);
+    li.textContent=c.name;
+    li.addEventListener('click',()=>{
+      map.setView([c.lat,c.lon],15);
+      // location-only clip file name convention (you already uploaded these)
+      // if any are missing, it will just no-op
+      const fname = c.name
+        .toLowerCase()
+        .replace(/[()]/g,'')
+        .replace(/[^a-z0-9]+/g,'_')
+        .replace(/^_|_$/g,'') + '.mp3';
+      playNow(AUDIO_BASE + fname);
     });
     ul.appendChild(li);
   });
+
+  makeUserMarker();
 }
 
-/* ---------- Geofencing ---------- */
-const ENTER_M = 25, EXIT_M = 45, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
+/* fetch corridors (Layer 4) and draw only polylines */
+const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
+const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
+const SPEED_LIMITS = {};
+let CORRIDOR_INDEX = new Map();
+
+function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='' ) return o[k]; } return null; }
+
+async function fetchCorridors(){
+  const url = `${ARCGIS_CORRIDORS}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
+  const r = await fetch(url, {cache:'no-store'});
+  if(!r.ok) throw new Error('ArcGIS unreachable');
+  return await r.json();
+}
+function drawCorridors(fc){
+  (fc.features||[]).forEach(feat=>{
+    if(!feat.geometry) return;
+    let geom = feat.geometry;
+    if(geom.type==='MultiLineString'){
+      geom = {type:'LineString', coordinates: geom.coordinates.sort((a,b)=>b.length-a.length)[0]};
+    }
+    if(geom.type!=='LineString') return;
+
+    const props = feat.properties||{};
+    const name = (getProp(props, NAME_FIELDS)||'').toString().trim();
+    const speed = Number(getProp(props, SPEED_FIELDS));
+    if (Number.isFinite(speed)) SPEED_LIMITS[name]=speed;
+
+    // leafet polyline from coords
+    const latlngs = geom.coordinates.map(([lng,lat])=>[lat,lng]);
+    const line = L.polyline(latlngs, {color:'#00d1ff', weight:5, opacity:.85}).addTo(map);
+
+    // keep in index for geofencing
+    CORRIDOR_INDEX.set(name, { lineGeo: geom, speed: Number.isFinite(speed)?speed:null, dir: props.Direction || props.DIRECTION || null });
+  });
+}
+
+/* geofencing using corridors + heading */
+const ENTER_M=25, EXIT_M=45, MAX_ACC_M=30, MIN_SPEED_MPS=2.2, COOLDOWN_MS=45000;
 const insideNow = new Set(), lastAlertAt = new Map();
-function toRad(d){return d*Math.PI/180}
-function distKm(aLat,aLon,bLat,bLon){
-  const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
-  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
-}
-function passesGates(coords){
-  const {accuracy,speed}=coords;
-  if(accuracy && accuracy>MAX_ACC_M) return false;
-  if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
-  return true;
-}
-function headingMatchesTag(headingDeg, dir){
+let currentZone = null;
+
+function headingMatches(headingDeg, dir){
   if(!dir || typeof headingDeg!=='number') return true;
   const map={NB:0,N:0,EB:90,E:90,SB:180,S:180,WB:270,W:270};
   const tgt = map[String(dir).toUpperCase()] ?? null; if(tgt==null) return true;
   const diff = Math.min(Math.abs(headingDeg-tgt), 360-Math.abs(headingDeg-tgt));
   return diff <= 60;
 }
-function inCorridorBuffer(ent, lngLat){
-  return ent.buffer ? turf.booleanPointInPolygon(turf.point(lngLat), ent.buffer) : false;
-}
-function corridorDistanceM(ent, lngLat){
-  if (ent && ent.line) return turf.pointToLineDistance(turf.point(lngLat), ent.line, { units:'meters' });
-  return Infinity;
-}
-function headingAlignsWithLine(ent, lngLat, userHeading){
-  if (!ent?.line || typeof userHeading!=='number') return true;
+function headingAlignsWithLine(name, lngLat, userHeading){
+  const e = CORRIDOR_INDEX.get(name);
+  if(!e || !e.lineGeo || typeof userHeading!=='number') return true;
   const pt = turf.point(lngLat);
-  const snapped = turf.nearestPointOnLine(ent.line, pt);
-  const idx = snapped.properties.index; const coords = ent.line.geometry.coordinates;
-  const a = coords[Math.max(0, idx-1)], b = coords[Math.min(coords.length-1, idx+1)];
-  if (!a || !b) return true;
+  const snapped = turf.nearestPointOnLine(e.lineGeo, pt);
+  const idx = snapped.properties.index;
+  const coords = e.lineGeo.coordinates;
+  const a = coords[Math.max(0, idx-1)];
+  const b = coords[Math.min(coords.length-1, idx+1)];
+  if(!a || !b) return true;
   const segBearing = turf.bearing(turf.point(a), turf.point(b));
-  const user = ((userHeading % 360) + 360) % 360;
-  const seg  = ((segBearing  % 360) + 360) % 360;
-  const diff = Math.min(Math.abs(user - seg), 360 - Math.abs(user - seg));
+  const user = ((userHeading%360)+360)%360;
+  const seg = ((segBearing%360)+360)%360;
+  const diff = Math.min(Math.abs(user-seg), 360-Math.abs(user-seg));
   return diff <= 60;
 }
-
-/* ---------- State Machine for 3-state toggle ---------- */
-const stateBtn = document.getElementById('stateBtn');
-const state = {
-  mode: 'off',       // 'off' | 'gps' | 'on'
-  gpsOn: false,
-  soundOn: false,
-  watchId: null
-};
-function applyState(){
-  stateBtn.classList.remove('off','gps','on');
-  stateBtn.classList.add(state.mode);
-  const hint = stateBtn.querySelector('.hint');
-  if (state.mode==='off'){ hint.textContent='Off'; state.gpsOn=false; state.soundOn=false; stopGPS(); stopAudio(); }
-  if (state.mode==='gps'){ hint.textContent='GPS Only'; state.gpsOn=true; state.soundOn=false; startGPS(); }
-  if (state.mode==='on'){  hint.textContent='On'; state.gpsOn=true; state.soundOn=true; startGPS(); }
+function showSpeedSign(limit){
+  const box=document.getElementById('speedSign'), val=document.getElementById('speedLimitValue');
+  if(!box||!val) return;
+  if(Number.isFinite(limit)){ val.textContent=String(limit); box.classList.remove('unknown'); }
+  else { val.textContent='--'; box.classList.add('unknown'); }
+  box.hidden=false; box.classList.add('show');
 }
-stateBtn.addEventListener('click', ()=>{
-  state.mode = (state.mode==='off') ? 'gps' : (state.mode==='gps' ? 'on' : 'off');
-  applyState();
+function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
+
+/* mode button (3 states): 0=off, 1=gps only, 2=sound+gps */
+let mode = 0;
+const modeBtn = document.getElementById('modeBtn');
+function applyMode(){
+  modeBtn.classList.remove('state-off','state-gps','state-on');
+  if (mode===0){ modeBtn.classList.add('state-off'); modeBtn.textContent='Sound & GPS: Off'; modeBtn.setAttribute('aria-pressed','false'); stopGPS(); }
+  else if (mode===1){ modeBtn.classList.add('state-gps'); modeBtn.textContent='GPS Only (Muted)'; modeBtn.setAttribute('aria-pressed','mixed'); startGPS(); }
+  else { modeBtn.classList.add('state-on'); modeBtn.textContent='Sound & GPS: On'; modeBtn.setAttribute('aria-pressed','true'); startGPS(); }
+}
+modeBtn.addEventListener('click', ()=>{
+  mode = (mode+1)%3;
+  applyMode();
 });
+applyMode();
 
-/* ---------- GPS start/stop + follow ---------- */
+/* GPS follow + geofence */
+let watchId = null;
 function startGPS(){
-  if (!('geolocation' in navigator)) return;
-  if (state.watchId != null) return;
-
-  // wake audio context once (for later allowed playback)
-  try{ new Audio().play().catch(()=>{});}catch{}
-
-  state.watchId = navigator.geolocation.watchPosition(async pos=>{
+  if (watchId!=null || !('geolocation' in navigator)) return;
+  watchId = navigator.geolocation.watchPosition(async pos=>{
     const {latitude, longitude, accuracy, speed, heading} = pos.coords;
-    // Update user marker
-    userMarker.setLatLng([latitude, longitude]);
-    userAccCircle.setLatLng([latitude, longitude]); userAccCircle.setRadius(accuracy||0);
+    if(accuracy && accuracy>MAX_ACC_M) return;
 
-    // Follow user smoothly
-    if (state.gpsOn && followUser){
-      map.setView([latitude, longitude]);
-    }
+    // update user marker
+    const latlng=[latitude, longitude];
+    userDot.setLatLng(latlng);
+    userCircle.setLatLng(latlng);
+    userCircle.setRadius(Math.max(accuracy||20, 15));
 
-    if (!passesGates(pos.coords)) return;
+    // keep map following user if fairly zoomed in
+    const z = map.getZoom();
+    if (z >= 14) map.panTo(latlng, {animate:true});
+
+    // geofence on corridors
+    if(typeof speed==='number' && speed<MIN_SPEED_MPS) return;
 
     const now = Date.now();
-    const lngLat = [longitude, latitude];
+    const lngLat=[longitude, latitude];
 
-    // Geofence loop over ArcGIS corridors
-    for (const [name, ent] of CORRIDOR_INDEX.entries()){
-      if (ent.dir && !headingMatchesTag(heading, ent.dir)) continue;
-      if (!headingAlignsWithLine(ent, lngLat, heading)) continue;
+    for (const [name,entry] of CORRIDOR_INDEX.entries()){
+      if (entry.dir && !headingMatches(heading, entry.dir)) continue;
+      if (!headingAlignsWithLine(name, lngLat, heading)) continue;
 
-      const inside = inCorridorBuffer(ent, lngLat);
-      const dM = inside ? 0 : corridorDistanceM(ent, lngLat);
-
+      const dM = turf.pointToLineDistance(turf.point(lngLat), entry.lineGeo, {units:'meters'});
       const wasIn = insideNow.has(name);
-      const entering = (!wasIn) && (inside || dM <= ENTER_M);
-      const exiting  = wasIn && (!inside && dM > EXIT_M);
+      const inNow = dM <= ENTER_M;
 
-      if (entering){
-        const last = lastAlertAt.get(name)||0;
-        if (now - last > COOLDOWN_MS){
-          playGeofenceAlert(name);
-          const limit = ent.speed || SPEED_LIMITS[name];
-          showSpeedSign(limit);
+      if (!wasIn && inNow){
+        const last = lastAlertAt.get(name) || 0;
+        if (now-last > COOLDOWN_MS){
+          if (mode===2){ // only speak if sound is on
+            const stem = pick(STEMS);
+            // location filename from list mapping (best-effort)
+            const fname = name.toLowerCase().replace(/[()]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')+'.mp3';
+            // chain: stem -> location -> tag
+            playChain([stem, fname, pick(TAGS)]);
+            if(navigator.vibrate) navigator.vibrate([250,100,250]);
+          }
+          showSpeedSign(entry.speed ?? null);
           lastAlertAt.set(name, now);
         }
         insideNow.add(name);
         currentZone = name;
-      } else if (exiting){
+      } else if (wasIn && dM > EXIT_M){
         insideNow.delete(name);
-        if (currentZone === name){ currentZone = null; hideSpeedSign(); }
+        if (currentZone===name){ currentZone=null; hideSpeedSign(); }
       }
     }
-  }, err => console.warn('Geolocation error', err), { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
-
-  followUser = true;
+  }, err=>console.warn('Geolocation error', err), { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
 }
 function stopGPS(){
-  followUser = false;
-  try{
-    if (state.watchId != null) { navigator.geolocation.clearWatch(state.watchId); state.watchId = null; }
-  }catch{}
-}
-
-/* ---------- Trial Nag (Ad) ---------- */
-const NAG_FIRST_MS = 120000;        // first nag at 120s
-const NAG_LOCK_S   = 25;            // lock for 25s
-const NAG_REPEAT_MS= 30*60*1000;    // then every 30 min
-const nagWrap = document.getElementById('nag');
-const nagImg = document.getElementById('nagImg');
-const nagTimer = document.getElementById('nagTimer');
-let nagAlt = false, nagAudio;
-function preloadNagAudio(){
-  try { nagAudio = new Audio(AUDIO_BASE + 'Ad1.mp3'); nagAudio.load(); } catch {}
-}
-function showNag(){
-  // Swap Ad image (Ad1/Ad2)
-  nagAlt = !nagAlt;
-  nagImg.src = nagAlt ? 'images/Ad2.png' : 'images/Ad1.png';
-
-  // Show overlay and force-play audio (override mute)
-  nagWrap.style.display = 'flex';
-  stopAudio();
-  try{ if (nagAudio){ nagAudio.currentTime = 0; nagAudio.play().catch(()=>{}); } }catch{}
-
-  // Countdown lock
-  let remain = NAG_LOCK_S;
-  nagTimer.textContent = remain;
-  const t = setInterval(()=>{ remain--; nagTimer.textContent = remain; if (remain<=0){ clearInterval(t); hideNag(); } }, 1000);
-}
-function hideNag(){
-  try{ if (nagAudio){ nagAudio.pause(); nagAudio.currentTime = 0; } }catch{}
-  nagWrap.style.display = 'none';
-}
-function scheduleNags(){
-  setTimeout(()=>{
-    showNag();
-    setInterval(showNag, NAG_REPEAT_MS);
-  }, NAG_FIRST_MS);
-}
-
-/* ---------- Build UI after ArcGIS loads ---------- */
-function setListFromIndex(){
-  const names = Array.from(CORRIDOR_INDEX.keys()).sort((a,b)=>a.localeCompare(b));
-  setList(names);
-}
-
-/* ---------- Boot ---------- */
-(async function boot(){
-  if (!isPaid){
-    // still render background and overlay; show trial CTA
-    preloadNagAudio();
-    scheduleNags();
-    return;
+  if (watchId!=null){
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
   }
+}
 
+/* NAG POPUP: 120s first, 30m thereafter; blocks close ~25s; plays even if muted */
+const nagWrap = document.getElementById('nagWrap');
+const nagImg  = document.getElementById('nagImg');
+const nagAudio = document.getElementById('nagAudio');
+const nagClose = document.getElementById('nagClose');
+const nagLink  = document.getElementById('nagLink');
+
+let nagIndex = 0; // 0 -> Ad1.png (provided), 1 -> Ad2.png (provided)
+const NAGS = [
+  'images/Ad1.png?v=2025-08-09-1',
+  'images/Ad2.png?v=2025-08-09-1'
+];
+
+function showNag(){
+  // swap graphic
+  nagIndex = (nagIndex+1) % NAGS.length;
+  nagImg.src = NAGS[nagIndex];
+
+  // show UI
+  nagWrap.style.display = 'flex';
+  nagClose.disabled = true;
+
+  // play audio even if muted state (override): we use a dedicated <audio> tag
+  try {
+    // restart from beginning and play
+    nagAudio.currentTime = 0;
+    const p = nagAudio.play();
+    if (p && p.catch) p.catch(()=>{ /* autoplay might still be blocked if no tap yet */ });
+  } catch(_){}
+
+  // unlock close after ~25s (audio is ~24s)
+  setTimeout(()=>{ nagClose.disabled = false; }, 25000);
+  // autoclose at 25s too (so it doesn't linger if user does nothing)
+  setTimeout(()=>{ closeNag(); }, 25050);
+}
+function closeNag(){
+  nagWrap.style.display = 'none';
+  try { nagAudio.pause(); } catch(_){}
+}
+nagClose.addEventListener('click', (e)=>{ e.preventDefault(); closeNag(); });
+
+// schedule: first at 120s, then every 30 minutes
+setTimeout(showNag, 120000);
+setInterval(showNag, 30*60*1000);
+
+// clicking the graphic goes to Stripe
+nagLink.addEventListener('click', ()=>{ try{ nagAudio.pause(); }catch(_){} });
+
+/* INIT */
+(async function boot(){
+  // always paid
+  localStorage.setItem('paid','true');
+
+  // video loop guard
+  const bg = document.getElementById('bgvid');
+  bg?.addEventListener('ended', ()=>{ try{ bg.currentTime=0; bg.play(); }catch(e){} }, false);
+  function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
+  window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
+
+  // init map
   initMap();
 
-  // Load ArcGIS data
-  let corridorsOK = false;
+  // fetch + draw corridors
   try{
-    await loadCorridors();
-    corridorsOK = corridorsL.getLayers().length > 0;
-    await loadPoles();
-    if (corridorsOK) {
-      map.fitBounds(corridorsL.getBounds().pad(0.15));
-      setListFromIndex();
-    }
+    const fc = await fetchCorridors();
+    drawCorridors(fc);
   }catch(e){
-    console.warn('ArcGIS load error', e);
+    console.warn('Corridors load failed', e);
   }
-
-  preloadNagAudio();
-  scheduleNags();
-
-  // Start OFF (red). User taps to cycle: OFF -> GPS-only -> ON
-  applyState();
 })();
 </script>
 </body>
