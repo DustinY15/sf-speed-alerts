@@ -5,10 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
 <title>SF Speed Cameras – Pro</title>
 
-<!-- ONE-TIME RECOVERY: kill old SW + caches, then hard reload once -->
+<!-- Kill old SW/caches once to avoid stale JS/CSS -->
 <script>
 (function(){
-  const BUSTER='recover-2025-08-09-2';
+  const BUSTER='recover-2025-08-09-3';
   if(localStorage.getItem('cache_buster')===BUSTER) return;
   localStorage.setItem('cache_buster',BUSTER);
   if('serviceWorker' in navigator){
@@ -17,7 +17,6 @@
   if(window.caches && caches.keys){
     caches.keys().then(keys=>Promise.all(keys.map(k=>caches.delete(k))));
   }
-  setTimeout(()=>location.replace(location.pathname+'?forcePaid'),300);
 })();
 </script>
 
@@ -46,28 +45,29 @@
   .page { flex:1 0 auto; position:relative; }
   footer { flex:0 0 auto; padding:14px 0 18px; text-align:center; }
 
-  /* background video centered forever */
+  /* background video centered */
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* overlay PNGs */
+  /* overlay PNGs (don’t block clicks) */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
-  /* content is pushed under the PNGs */
+  /* content pushed below overlay */
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:1; margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){
     .content-wrap{ margin-top:var(--paid-offset-desktop); }
   }
 
-  /* map + list */
+  /* map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:220px; overflow-y:auto; }
 
-  /* 3-state button */
-  #modeBtn{
-    border:0; font-weight:800; color:#000; padding:.4rem .75rem; border-radius:.5rem;
+  /* 3-state button styled like .btn-sm */
+  #modeBtn.btn{
+    font-weight:700;
+    border:0;
   }
   #modeBtn.state-off{ background:var(--state-off); color:#fff; }
   #modeBtn.state-on { background:var(--state-on);  color:#fff; }
@@ -84,12 +84,12 @@
 
   /* nag popup */
   .nag-wrap{
-    position:fixed; left:0; right:0; top:25px; /* lowered 25px */
-    display:flex; justify-content:center; z-index:1000; pointer-events:none;
+    position:fixed; left:0; right:0; top:25px;
+    display:none; justify-content:center; z-index:1000; pointer-events:none;
   }
   .nag{ pointer-events:auto; background:transparent; border:none; padding:0; margin:0; }
   .nag img{
-    width:min(92vw, 560px); /* ~20% bigger */
+    width:min(92vw, 560px); /* +~20% */
     max-width:100%; height:auto; display:block;
     box-shadow:0 20px 60px rgba(0,0,0,.55);
   }
@@ -99,14 +99,9 @@
     cursor:pointer;
   }
 
-  /* user marker styles */
-  .loc-accuracy{
-    stroke:#1f6feb; stroke-opacity:.6; fill:#1f6feb; fill-opacity:.12;
-  }
-  .loc-dot{
-    background:#1f6feb; width:14px; height:14px; border-radius:50%; border:2px solid #fff;
-    box-shadow:0 0 0 3px rgba(31,111,235,.35);
-  }
+  /* user location visuals */
+  .loc-accuracy{ stroke:#1f6feb; stroke-opacity:.6; fill:#1f6feb; fill-opacity:.12; }
+  .loc-dot{ background:#1f6feb; width:14px; height:14px; border-radius:50%; border:2px solid #fff; box-shadow:0 0 0 3px rgba(31,111,235,.35); }
   .leaflet-user-dot{ width:18px; height:18px; display:inline-block; }
 </style>
 </head>
@@ -115,25 +110,25 @@
   <!-- background video -->
   <div class="video-bg">
     <video id="bgvid" autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
-      <source src="videos/background.mp4?v=2025-08-09-2" type="video/mp4">
+      <source src="videos/background.mp4?v=2025-08-09-3" type="video/mp4">
     </video>
   </div>
 
   <!-- overlay art (PAID) -->
-  <div class="overlay-layer">
+  <div class="overlay-layer" aria-hidden="true">
     <picture id="overlay-paid">
-      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png?v=2025-08-09-2">
-      <img src="images/Copyblockdesktop_paid.png?v=2025-08-09-2" alt="SF Speed Cameras (Pro)">
+      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png?v=2025-08-09-3">
+      <img src="images/Copyblockdesktop_paid.png?v=2025-08-09-3" alt="">
     </picture>
   </div>
 
   <!-- page -->
   <div class="page">
     <div class="content-wrap">
-      <!-- top row: 3-state button + Go Pro (Stripe) -->
+      <!-- top row: 3-state + Go Pro; matched sizes -->
       <div class="d-flex align-items-center justify-content-between mb-3">
-        <button id="modeBtn" class="state-off" aria-pressed="false" aria-label="Sound and GPS mode">Sound &amp; GPS: Off</button>
-        <a class="btn btn-primary btn-sm" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Go Pro</a>
+        <button id="modeBtn" class="btn btn-sm state-off" aria-pressed="false" aria-label="Sound and GPS mode">Sound &amp; GPS: Off</button>
+        <a class="btn btn-primary btn-sm align-self-start" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">Go Pro</a>
       </div>
 
       <!-- map -->
@@ -156,15 +151,15 @@
     </div>
   </div>
 
-  <!-- nag popup (hidden initially) -->
-  <div id="nagWrap" class="nag-wrap" style="display:none;">
+  <!-- nag popup -->
+  <div id="nagWrap" class="nag-wrap">
     <div class="nag position-relative">
       <button id="nagClose" class="close-x" aria-label="Close popup" disabled>×</button>
       <a id="nagLink" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01">
-        <img id="nagImg" src="images/Ad1.png?v=2025-08-09-2" alt="Upgrade prompt">
+        <img id="nagImg" src="images/Ad1.png?v=2025-08-09-3" alt="Upgrade prompt">
       </a>
       <audio id="nagAudio" preload="auto">
-        <source src="images/audio/Ad1.mp3?v=2025-08-09-2" type="audio/mpeg">
+        <source src="images/audio/Ad1.mp3?v=2025-08-09-3" type="audio/mpeg">
       </audio>
     </div>
   </div>
@@ -175,55 +170,41 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* ---------- CONSTANTS ---------- */
+/* ------- stable boot: DOM ready first ------- */
+document.addEventListener('DOMContentLoaded', () => {
+  try { history.scrollRestoration = 'manual'; } catch {}
+  if (location.hash) { history.replaceState(null, '', location.pathname); }
+  window.scrollTo(0,0);
+
+  boot().catch(err => console.error('Boot error', err));
+});
+
+/* ------- constants & helpers ------- */
 const ARCGIS_CORRIDORS =
   'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
-
 const AUDIO_BASE = 'images/audio/';
-const STRIPE_URL = 'https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01';
 
-/* ---------- BOOT (always paid) ---------- */
-try { history.scrollRestoration = 'manual'; } catch {}
-if (location.hash) { history.replaceState(null, '', location.pathname); }
-window.addEventListener('load', () => { window.scrollTo(0,0); });
-
-const q = new URLSearchParams(location.search);
-if (q.has('forcePaid')) localStorage.setItem('paid','true');
-localStorage.setItem('paid','true');
-
-/* ---------- AUDIO CORE (single global, no overlaps) ---------- */
-let audioUnlocked = false;
-function unlockAudio(){
-  if (audioUnlocked) return;
-  audioUnlocked = true;
-  try { const a = new Audio(); a.muted = true; a.play().catch(()=>{}); } catch(_){}
+function pick(a){ return a[Math.floor(Math.random()*a.length)] }
+function slugForAudio(name){
+  return name.toLowerCase().replace(/[()]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') + '.mp3';
 }
-['touchstart','click'].forEach(ev => document.addEventListener(ev, unlockAudio, {passive:true}));
 
-const player = new Audio();
-player.preload = 'auto';
-let chainQueue = [];
+/* ------- audio (single player, no overlaps) ------- */
+let audioUnlocked=false;
+['touchstart','click'].forEach(ev=>document.addEventListener(ev, ()=>{ if(!audioUnlocked){ audioUnlocked=true; try{ const a=new Audio(); a.muted=true; a.play().catch(()=>{});}catch{}} }, {passive:true}));
+
+const player = new Audio(); player.preload='auto';
+let chainQueue=[];
 player.addEventListener('ended', ()=>{
-  if (chainQueue.length) {
-    const next = chainQueue.shift();
-    player.src = next;
+  if(chainQueue.length){
+    player.src = chainQueue.shift();
     player.play().catch(()=>{});
   }
 });
-function playNow(fileUrl){
-  try{
-    player.pause(); player.currentTime = 0; chainQueue.length = 0;
-    player.src = fileUrl; player.play().catch(()=>{});
-  }catch(_){}
-}
-function playChain(files){
-  try{
-    player.pause(); player.currentTime = 0; chainQueue = files.slice(1).map(f=>AUDIO_BASE+f);
-    player.src = AUDIO_BASE + files[0]; player.play().catch(()=>{});
-  }catch(_){}
-}
+function playNow(url){ try{ player.pause(); player.currentTime=0; chainQueue.length=0; player.src=url; player.play().catch(()=>{});}catch{} }
+function playChain(files){ try{ player.pause(); player.currentTime=0; chainQueue=files.slice(1).map(f=>AUDIO_BASE+f); player.src=AUDIO_BASE+files[0]; player.play().catch(()=>{});}catch{} }
 
-/* fun lines */
+/* fun stems/tags */
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
   'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
@@ -237,9 +218,8 @@ const TAGS = [
   'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
   'brakes_are_a_good_good_friend.mp3'
 ];
-function pick(a){ return a[Math.floor(Math.random()*a.length)] }
 
-/* your 33 cameras (for markers + list clicks) */
+/* the 33 cameras */
 const cameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -276,60 +256,57 @@ const cameras = [
   {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
 ];
 
-/* map */
+/* globals */
 let map, userDot, userCircle, cameraLayer;
-function makeUserMarker(){
+let watchId=null;
+
+/* init map & list */
+function initMap(){
+  const m = document.getElementById('map');
+  if(!m){ console.warn('Map container missing'); return; }
+
+  map = L.map('map', {zoomControl:true}).setView([37.7749,-122.4194], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap'
+  }).addTo(map);
+
+  // user marker + accuracy
   const div = L.divIcon({ className:'leaflet-user-dot', html:'<div class="loc-dot"></div>', iconSize:[18,18], iconAnchor:[9,9] });
-  userDot = L.marker([37.7749,-122.4194], { icon: div });
-  userCircle = L.circle([37.7749,-122.4194], {
-    radius: 30, className:'loc-accuracy'
-  });
-  userDot.addTo(map);
-  userCircle.addTo(map);
-}
-function drawCameraDots(){
-  if (cameraLayer) cameraLayer.remove();
+  userDot   = L.marker([37.7749,-122.4194], { icon: div }).addTo(map);
+  userCircle= L.circle([37.7749,-122.4194], { radius:30, className:'loc-accuracy' }).addTo(map);
+
+  // camera dots
   cameraLayer = L.layerGroup();
   cameras.forEach(c=>{
     L.circleMarker([c.lat,c.lon], {
-      radius: 6,
-      color: '#aa1b1b',      /* red stroke */
-      weight: 2,
-      fillColor: '#ff2d2d',  /* red fill */
-      fillOpacity: 0.95
+      radius: 6, color:'#aa1b1b', weight:2, fillColor:'#ff2d2d', fillOpacity:.95
     }).bindPopup(c.name).addTo(cameraLayer);
   });
   cameraLayer.addTo(map);
-}
-function initMap(){
-  map = L.map('map', {zoomControl:true}).setView([37.7749,-122.4194], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
-  // list (click plays location-only + centers map)
+  // list
   const ul = document.querySelector('.camera-list');
-  cameras.forEach(c=>{
-    const li=document.createElement('li');
-    li.className='list-group-item';
-    li.textContent=c.name;
-    li.addEventListener('click',()=>{
-      map.setView([c.lat,c.lon],15);
-      const fname = c.name.toLowerCase().replace(/[()]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'') + '.mp3';
-      playNow(AUDIO_BASE + fname); // plays regardless of mute, by design for list taps
+  if(ul){
+    ul.innerHTML='';
+    cameras.forEach(c=>{
+      const li=document.createElement('li');
+      li.className='list-group-item';
+      li.textContent=c.name;
+      li.addEventListener('click',()=>{
+        map.setView([c.lat,c.lon],15);
+        playNow(AUDIO_BASE + slugForAudio(c.name)); // plays on list tap regardless of mute
+      });
+      ul.appendChild(li);
     });
-    ul.appendChild(li);
-  });
-
-  makeUserMarker();
-  drawCameraDots();
+  }
 }
 
-/* fetch corridors (Layer 4) and draw only polylines */
+/* corridors (polylines only) */
 const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
 const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
 const SPEED_LIMITS = {};
 let CORRIDOR_INDEX = new Map();
-
-function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='' ) return o[k]; } return null; }
+function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
 
 async function fetchCorridors(){
   const url = `${ARCGIS_CORRIDORS}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
@@ -358,7 +335,7 @@ function drawCorridors(fc){
   });
 }
 
-/* geofencing using corridors + heading */
+/* directional gates */
 const ENTER_M=25, EXIT_M=45, MAX_ACC_M=30, MIN_SPEED_MPS=2.2, COOLDOWN_MS=45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 let currentZone = null;
@@ -386,16 +363,8 @@ function headingAlignsWithLine(name, lngLat, userHeading){
   const diff = Math.min(Math.abs(user-seg), 360-Math.abs(user-seg));
   return diff <= 60;
 }
-function showSpeedSign(limit){
-  const box=document.getElementById('speedSign'), val=document.getElementById('speedLimitValue');
-  if(!box||!val) return;
-  if(Number.isFinite(limit)){ val.textContent=String(limit); box.classList.remove('unknown'); }
-  else { val.textContent='--'; box.classList.add('unknown'); }
-  box.hidden=false; box.classList.add('show');
-}
-function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* mode button (order: Off[0] -> On[1] -> Mute/GPS[2]) */
+/* 3-state button: Off (red) -> On (green) -> Mute/GPS (yellow) */
 let mode = 0;
 const modeBtn = document.getElementById('modeBtn');
 function applyMode(){
@@ -417,16 +386,11 @@ function applyMode(){
     startGPS();
   }
 }
-modeBtn.addEventListener('click', ()=>{
-  mode = (mode+1)%3; // Off -> On -> Mute
-  applyMode();
-});
-applyMode();
+modeBtn.addEventListener('click', ()=>{ mode=(mode+1)%3; applyMode(); });
 
 /* GPS follow + geofence */
-let watchId = null;
 function startGPS(){
-  if (watchId!=null || !('geolocation' in navigator)) return;
+  if(watchId!=null || !('geolocation' in navigator)) return;
   watchId = navigator.geolocation.watchPosition(async pos=>{
     const {latitude, longitude, accuracy, speed, heading} = pos.coords;
     if(accuracy && accuracy>MAX_ACC_M) return;
@@ -436,8 +400,8 @@ function startGPS(){
     userCircle.setLatLng(latlng);
     userCircle.setRadius(Math.max(accuracy||20, 15));
 
-    const z = map.getZoom();
-    if (z >= 14) map.panTo(latlng, {animate:true});
+    // gentle follow
+    if (map.getZoom() >= 14){ map.panTo(latlng, {animate:true}); }
 
     if(typeof speed==='number' && speed<MIN_SPEED_MPS) return;
 
@@ -453,11 +417,11 @@ function startGPS(){
       const inNow = dM <= ENTER_M;
 
       if (!wasIn && inNow){
-        const last = lastAlertAt.get(name) || 0;
+        const last = lastAlertAt.get(name)||0;
         if (now-last > COOLDOWN_MS){
-          if (mode===1){ // only speak in GREEN "On" state
+          if (mode===1){ // speak only in GREEN
             const stem = pick(STEMS);
-            const fname = name.toLowerCase().replace(/[()]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'')+'.mp3';
+            const fname = slugForAudio(name);
             playChain([stem, fname, pick(TAGS)]);
             if(navigator.vibrate) navigator.vibrate([250,100,250]);
           }
@@ -474,29 +438,34 @@ function startGPS(){
   }, err=>console.warn('Geolocation error', err), { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
 }
 function stopGPS(){
-  if (watchId!=null){
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-  }
+  if(watchId!=null){ navigator.geolocation.clearWatch(watchId); watchId=null; }
 }
 
-/* NAG POPUP: 120s first, 30m thereafter; blocks close ~25s; always plays */
+/* speed sign helpers */
+function showSpeedSign(limit){
+  const box=document.getElementById('speedSign'), val=document.getElementById('speedLimitValue');
+  if(!box||!val) return;
+  if(Number.isFinite(limit)){ val.textContent=String(limit); box.classList.remove('unknown'); }
+  else { val.textContent='--'; box.classList.add('unknown'); }
+  box.hidden=false; box.classList.add('show');
+}
+function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
+
+/* Nag popup (120s first, 30m thereafter; 25s lock; audio always plays) */
 const nagWrap = document.getElementById('nagWrap');
 const nagImg  = document.getElementById('nagImg');
-const nagAudio = document.getElementById('nagAudio');
-const nagClose = document.getElementById('nagClose');
-const nagLink  = document.getElementById('nagLink');
+const nagAudio= document.getElementById('nagAudio');
+const nagClose= document.getElementById('nagClose');
+const nagLink = document.getElementById('nagLink');
 
 let nagIndex = 0;
 const NAGS = [
-  'images/Ad1.png?v=2025-08-09-2',
-  'images/Ad2.png?v=2025-08-09-2'
+  'images/Ad1.png?v=2025-08-09-3',
+  'images/Ad2.png?v=2025-08-09-3'
 ];
-
 function showNag(){
   nagIndex = (nagIndex+1) % NAGS.length;
   nagImg.src = NAGS[nagIndex];
-
   nagWrap.style.display = 'flex';
   nagClose.disabled = true;
 
@@ -506,34 +475,41 @@ function showNag(){
     if (p && p.catch) p.catch(()=>{});
   } catch(_){}
 
-  setTimeout(()=>{ nagClose.disabled = false; }, 25000);
-  setTimeout(()=>{ closeNag(); }, 25050);
+  setTimeout(()=>{ nagClose.disabled=false; }, 25000);
+  setTimeout(closeNag, 25050);
 }
-function closeNag(){
-  nagWrap.style.display = 'none';
-  try { nagAudio.pause(); } catch(_){}
-}
+function closeNag(){ nagWrap.style.display='none'; try{ nagAudio.pause(); }catch{} }
 nagClose.addEventListener('click', (e)=>{ e.preventDefault(); closeNag(); });
-setTimeout(showNag, 120000);
-setInterval(showNag, 30*60*1000);
-nagLink.addEventListener('click', ()=>{ try{ nagAudio.pause(); }catch(_){} });
+nagLink.addEventListener('click', ()=>{ try{ nagAudio.pause(); }catch{} });
 
-/* INIT */
-(async function boot(){
+/* boot */
+async function boot(){
+  // video keep-fit
   const bg = document.getElementById('bgvid');
   bg?.addEventListener('ended', ()=>{ try{ bg.currentTime=0; bg.play(); }catch(e){} }, false);
   function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
   window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
 
+  // always paid mode
+  localStorage.setItem('paid','true');
+
+  // map + list
   initMap();
 
+  // corridors (don’t block UI if offline)
   try{
     const fc = await fetchCorridors();
     drawCorridors(fc);
-  }catch(e){
-    console.warn('Corridors load failed', e);
-  }
-})();
+  }catch(e){ console.warn('Corridors load failed', e); }
+
+  // 3-state button start at OFF but matched styling
+  applyMode();
+
+  // nag timers: 120s first, 30m repeat; force with ?nag=now
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('nag')==='now'){ setTimeout(showNag, 1000); }
+  else { setTimeout(showNag, 120000); setInterval(showNag, 30*60*1000); }
+}
 </script>
 </body>
 </html>
