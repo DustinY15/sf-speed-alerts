@@ -12,10 +12,10 @@
 
 <style>
   :root{
-    --overlay-top: 10px;      /* paid PNG distance from top */
-    --content-offset-m: 260px;/* content offset below PNG (mobile) */
-    --content-offset-d: 330px;/* content offset below PNG (desktop) */
-    --shell-max: 520px;       /* max width for app shell */
+    --overlay-top: 10px;
+    --content-offset-m: 260px;   /* content below PNG (mobile) */
+    --content-offset-d: 330px;   /* content below PNG (desktop) */
+    --shell-max: 520px;          /* max width for app shell */
   }
 
   html, body { height:100%; }
@@ -30,25 +30,22 @@
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* PAID overlay PNGs (always paid now). Pointer-events:none so clicks reach buttons. */
+  /* Paid overlay PNGs */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
-  /* App shell keeps content centered under logo across breakpoints */
+  /* App shell keeps content centered under logo */
   .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
 
   /* Content under PNG */
-  .content-wrap{ position:relative; padding:16px 12px 24px; z-index:1; }
-  .content-wrap{ margin-top:var(--content-offset-m); }
-  @media (min-width:1200px){
-    .content-wrap{ margin-top:var(--content-offset-d); }
-  }
+  .content-wrap{ position:relative; padding:16px 12px 24px; z-index:1; margin-top:var(--content-offset-m); }
+  @media (min-width:1200px){ .content-wrap{ margin-top:var(--content-offset-d); } }
 
-  /* Buttons row (match sizes) */
+  /* Buttons row (matched sizing) */
   .btn-row{ display:flex; gap:10px; align-items:center; }
   .btn-row .btn{ height:40px; line-height:40px; padding:0 14px; font-weight:700; }
 
-  /* Tri-state style badges */
+  /* Tri-state classes */
   .state-off   { background:#c62828!important; border-color:#c62828!important; color:#fff!important; }
   .state-on    { background:#2e7d32!important; border-color:#2e7d32!important; color:#fff!important; }
   .state-mute  { background:#f9a825!important; border-color:#f9a825!important; color:#111!important; }
@@ -67,9 +64,9 @@
   .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
   .speed-sign.unknown .capsule{ display:inline-block; }
 
-  /* Trial nag (top-anchored, centered) */
+  /* Trial nag (top, centered) */
   .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:60; display:none; }
-  .nag{ position:fixed; top:0; left:50%; transform:translateX(-50%); width:min(92vw, var(--shell-max)); z-index:61; display:none; }
+  .nag{ position:fixed; top:25px; left:50%; transform:translateX(-50%); width:min(92vw, var(--shell-max)); z-index:61; display:none; }
   .nag img{ width:100%; height:auto; display:block; }
 </style>
 </head>
@@ -136,19 +133,24 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+/* --- Helpers: hard fail guard so one error doesn’t hide everything --- */
+function safe(fn){ try{ fn(); }catch(e){ console.warn(e); } }
+
 /* ---------- Initial scroll behavior ---------- */
-try { history.scrollRestoration = 'manual'; } catch {}
-if (location.hash) { history.replaceState(null, '', location.pathname); }
-window.addEventListener('load', () => { window.scrollTo(0, 0); });
+safe(()=>{ try { history.scrollRestoration = 'manual'; } catch {} });
+safe(()=>{ if (location.hash) { history.replaceState(null, '', location.pathname); } });
+safe(()=>{ window.addEventListener('load', () => { window.scrollTo(0, 0); }); });
 
 /* ---------- Video loop height fix ---------- */
-const bg = document.getElementById('bgvid');
-bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
-function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
-addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
+safe(()=>{
+  const bg = document.getElementById('bgvid');
+  bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
+  function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
+  addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
+});
 
-/* ---------- 33 cameras (points kept for list & fallback) ---------- */
-const cameras = [
+/* ---------- 33 seed cameras (fallback) ---------- */
+const seedCameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
   {name:"Geary Blvd from 7th to 8th Ave",lat:37.7805,lon:-122.4660},
@@ -184,10 +186,9 @@ const cameras = [
   {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
 ];
 
-/* ---------- App shell / UI ---------- */
+/* ---------- UI state: tri-state button ---------- */
 const soundBtn = document.getElementById('soundBtn');
-const goProBtn = document.getElementById('goPro');
-let audioState = 'off'; // 'off' (red) -> 'on' (green) -> 'mute' (yellow)
+let audioState = 'off'; // off -> on -> mute
 function applyAudioState(){
   soundBtn.classList.remove('state-off','state-on','state-mute');
   if (audioState==='off'){ soundBtn.classList.add('state-off'); soundBtn.textContent='Sound & GPS: Off'; soundBtn.setAttribute('aria-pressed','false'); }
@@ -202,8 +203,8 @@ soundBtn.addEventListener('click', ()=>{
 applyAudioState();
 
 /* ---------- Map + list ---------- */
-let map, meMarker, meCircle, corridorLayer;
-function initMap(){
+let map, meMarker, meCircle, corridorLayer, camsLayer;
+function initMap(cameras){
   map = L.map('map', { zoomControl:true }).setView([37.7749,-122.4194], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
@@ -213,23 +214,28 @@ function initMap(){
     html: '<div style="width:14px;height:14px;border-radius:50%;background:#e53935;border:2px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.45)"></div>',
     iconSize: [14,14], iconAnchor: [7,7]
   });
-  cameras.forEach(c => L.marker([c.lat,c.lon], { icon: camIcon }).addTo(map).bindPopup(c.name));
+  camsLayer = L.layerGroup().addTo(map);
+  cameras.forEach(c => L.marker([c.lat,c.lon], { icon: camIcon }).addTo(camsLayer).bindPopup(c.name));
 
   // Populate list
   const ul = document.querySelector('.camera-list');
+  ul.innerHTML = '';
   cameras.forEach(c=>{
     const li=document.createElement('li');
     li.className='list-group-item';
     li.textContent=c.name;
     li.addEventListener('click',()=>{
       map.setView([c.lat,c.lon],15,{animate:true});
-      // Optional list click audio could go here (location-only)
+      // (We can play location VO here later if desired)
     });
     ul.appendChild(li);
   });
 
-  // Prevent map from stealing focus -> no auto scroll jumps
+  // Don’t let map focus cause scroll jump
   document.getElementById('map').setAttribute('tabindex','-1');
+
+  // Pause follow on user interactions
+  armMapDwell();
 }
 
 /* ---------- Live location layers ---------- */
@@ -238,11 +244,11 @@ function updateMe(lat, lon, acc=25){
     meMarker = L.circleMarker([lat,lon], { radius:6, color:'#1976d2', fillColor:'#42a5f5', fillOpacity:1, weight:2 }).addTo(map);
   } else { meMarker.setLatLng([lat,lon]); }
   if (!meCircle){
-    meCircle = L.circle([lat,lon], { radius: acc, color:'#42a5f5', fillColor:'#42a5f5', fillOpacity:0.15, weight:1, dashArray:'4 4' }).addTo(map);
+    meCircle = L.circle([lat,lon], { radius: acc, color:'#42a5f5', fillColor:'#42a5f5', fillOpacity:0.15, weight:0 }).addTo(map);
   } else { meCircle.setLatLng([lat,lon]); meCircle.setRadius(acc); }
 }
 
-/* ---------- Audio (chains for GPS alerts only) ---------- */
+/* ---------- Audio chains (GPS alerts); prevent overlap ---------- */
 const AUDIO_BASE = 'images/audio/';
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
@@ -257,24 +263,23 @@ const TAGS = [
   'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
   'brakes_are_a_good_good_friend.mp3'
 ];
-// stop overlap: one chain at a time
 let __chainPlaying = false;
+function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
 function playChain(files){
   if(!files.length || __chainPlaying) return;
+  if (audioState==='off') return; // GPS chains respect off
   __chainPlaying = true;
   const a = new Audio(AUDIO_BASE + files[0]);
-  // Respect mute on GPS chains (mute=GPS only); but ads override mute (handled in nag)
-  if (audioState==='off') { __chainPlaying=false; return; }
   a.play().catch(()=>{ __chainPlaying=false; });
-  a.onended = ()=> {
+  a.onended = ()=>{
     const rest = files.slice(1);
-    if (rest.length){ __chainPlaying=false; playChain(rest); } else { setTimeout(()=>{ __chainPlaying=false; }, 200); }
+    if (rest.length){ __chainPlaying=false; playChain(rest); }
+    else setTimeout(()=>{ __chainPlaying=false; }, 200);
   };
 }
-function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
 function playGeofenceAlert(){ playChain([pick(STEMS), pick(TAGS)]); }
 
-/* ---------- SPEED LIMIT sign ---------- */
+/* ---------- SPEED LIMIT sign (placeholder until we wire per-corridor speeds) ---------- */
 const SPEED_LIMITS = {};
 let currentZone = null;
 function showSpeedSign(limit){
@@ -286,14 +291,29 @@ function showSpeedSign(limit){
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* ---------- ArcGIS (filter to our 33 only) ---------- */
+/* ---------- ArcGIS corridors → filter to our cameras/poles ---------- */
 const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
 const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
 const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
-const CACHE_KEY = 'sf_ase_corridors_v2'; // bump if schema/tuning changes
-
+const CACHE_KEY = 'sf_ase_corridors_v3';
 let CORRIDOR_INDEX = new Map(); // name -> { line, buffer, speed, dir }
+
 function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
+function norm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
+function toRad(d){ return d*Math.PI/180; }
+function hav(m1){
+  // helper omitted
+}
+function nearAnyPoint([lng,lat], points, meters = 150){
+  for (const [clng,clat] of points){
+    const dLat = toRad(lat - clat), dLon = toRad(lng - clng);
+    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat))*Math.cos(toRad(clat))*Math.sin(dLon/2)**2;
+    const d = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    if (d <= meters) return true;
+  }
+  return false;
+}
+
 async function fetchLiveCorridors(){
   const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
   const r = await fetch(url, { cache:'no-store' });
@@ -303,29 +323,10 @@ async function fetchLiveCorridors(){
 function loadCache(){ try{ const s=localStorage.getItem(CACHE_KEY); return s?JSON.parse(s):null; }catch{ return null; } }
 function saveCache(fc){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(fc)); }catch{} }
 
-/* quick lookups */
-const CAM_POINTS = cameras.map(c => [c.lon, c.lat]);
-const CAM_NAMES  = new Set(cameras.map(c => c.name.toLowerCase()));
-function norm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
-function nearAnyCamera([lng,lat], meters = 150){
-  const toRad = d=>d*Math.PI/180;
-  for (const [clng, clat] of CAM_POINTS){
-    const dLat = toRad(lat - clat), dLon = toRad(lng - clng);
-    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat))*Math.cos(toRad(clat))*Math.sin(dLon/2)**2;
-    const d = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    if (d <= meters) return true;
-  }
-  return false;
-}
-
-async function ensureCorridors(){
+async function ensureCorridors(cameraPoints){
   let fc = loadCache();
-  if(!fc){
-    try { fc = await fetchLiveCorridors(); saveCache(fc); }
-    catch { return; }
-  } else {
-    fetchLiveCorridors().then(saveCache).catch(()=>{});
-  }
+  if(!fc){ try { fc = await fetchLiveCorridors(); saveCache(fc); } catch { return; } }
+  else { fetchLiveCorridors().then(saveCache).catch(()=>{}); }
 
   CORRIDOR_INDEX.clear();
   const filtered = [];
@@ -343,24 +344,25 @@ async function ensureCorridors(){
     const name = rawName ? String(rawName).trim() : null;
     if (!name) continue;
 
-    const nName = norm(name);
-    const nameMatches = [...CAM_NAMES].some(n => nName.includes(n.slice(0, Math.min(18, n.length))));
-    const spatialMatches = geom.coordinates.some(([lng,lat]) => nearAnyCamera([lng,lat], 150));
-    if (!(nameMatches || spatialMatches)) continue;
+    const spatialMatches = geom.coordinates.some(([lng,lat]) => nearAnyPoint([lng,lat], cameraPoints, 150));
+    if (!spatialMatches) continue;
 
     const speed = Number(getProp(props, SPEED_FIELDS));
+    // Build filled corridor polygon (buffer) with no stroke (looks clean at all zooms)
     let buffered = null; try{ buffered = turf.buffer(geom, 20, { units:'meters' }); }catch{}
     CORRIDOR_INDEX.set(name, { line: geom, buffer: buffered, speed: Number.isFinite(speed)?speed:null, dir: props.Direction || props.DIRECTION || null });
     if (Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
 
-    filtered.push({ type:'Feature', geometry: geom, properties: { name } });
+    if (buffered){
+      filtered.push({ type:'Feature', geometry: buffered.geometry, properties: { name } });
+    }
   }
 
-  // Draw ONLY filtered corridors (gold)
+  // Draw polygons (gold fill, NO outline)
   if (map){
     if (corridorLayer) corridorLayer.remove();
     corridorLayer = L.geoJSON({ type:'FeatureCollection', features: filtered }, {
-      style: { color:'#FFCC33', weight:5, opacity:0.85 }
+      style: { color: null, weight: 0, fillColor:'#FFCC33', fillOpacity:0.28 }
     }).addTo(map);
   }
 }
@@ -368,10 +370,9 @@ async function ensureCorridors(){
 /* ---------- Geofencing with buffer + bearing + dwell ---------- */
 const ENTER_M = 25, EXIT_M = 45, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
-let lastUserInteract = 0;            // when user last dragged/zoomed/tapped map
-const FOLLOW_DWELL_MS = 15000;       // pause follow for 15s after interaction
+let lastUserInteract = 0;
+const FOLLOW_DWELL_MS = 15000;
 
-// map interaction listeners to pause following
 function armMapDwell(){
   if (!map) return;
   ['dragstart','zoomstart','mousedown','touchstart'].forEach(ev=>{
@@ -435,9 +436,109 @@ function startGPS(){
       }
     }
 
-    for (const cam of cameras){
-      const ent = CORRIDOR_INDEX.get(cam.name);
-      if(!ent) continue;
-
+    // Geofence (if corridors known)
+    for (const [name, ent] of CORRIDOR_INDEX.entries()){
       if (ent.dir && !headingMatches(heading, ent.dir)) continue;
-      if (!headingAlignsWithLine
+
+      const inside = inCorridorBuffer(ent, lngLat);
+      const dM = inside ? 0 : corridorDistanceM(ent, lngLat);
+
+      const wasIn = insideNow.has(name);
+      const entering = (!wasIn) && (inside || dM <= ENTER_M);
+      const exiting  = wasIn && (!inside && dM > EXIT_M);
+
+      if (entering) {
+        const last = lastAlertAt.get(name)||0;
+        if (now-last > COOLDOWN_MS) {
+          playGeofenceAlert();
+          showSpeedSign(ent.speed ?? null);
+          lastAlertAt.set(name, now);
+        }
+        insideNow.add(name);
+        currentZone = name;
+      } else if (exiting) {
+        insideNow.delete(name);
+        if (currentZone === name){ currentZone = null; hideSpeedSign(); }
+      }
+    }
+  }, err=>console.warn('Geolocation error', err),
+  { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
+}
+
+/* ---------- Trial nag (120s first; then every 30m). Audio overrides mute. ---------- */
+const nagBackdrop = document.getElementById('nagBackdrop');
+const nag = document.getElementById('nag');
+const nagImg = document.getElementById('nagImg');
+const adAudio = document.getElementById('adAudio');
+
+function showNag(){
+  nagBackdrop.style.display='block';
+  nag.style.display='block';
+  // Force-play even if muted/off (as requested)
+  adAudio.currentTime = 0;
+  adAudio.play().catch(()=>{ /* if iOS blocks, any tap will enable later */ });
+  // Auto-close after ~25s (your VO is 24s)
+  setTimeout(hideNag, 25000);
+}
+function hideNag(){
+  nagBackdrop.style.display='none';
+  nag.style.display='none';
+  adAudio.pause();
+}
+nagBackdrop.addEventListener('click', hideNag);
+nagImg.addEventListener('click', ()=>{ window.location.href = document.getElementById('goPro').href; });
+
+function scheduleNags(){
+  // First nag after 120s
+  setTimeout(()=>{ showNag(); }, 120000);
+  // Then every 30 minutes
+  setInterval(()=>{ showNag(); }, 30*60*1000);
+}
+
+/* ---------- Prefer precise poles if provided ---------- */
+/* Expected file: images/data/poles.json
+   {
+     "type":"FeatureCollection",
+     "features":[
+       {"type":"Feature","properties":{"name":"Fulton Street from 42nd to 43rd Ave"},"geometry":{"type":"Point","coordinates":[-122.5015,37.7725]}},
+       ...
+     ]
+   }
+*/
+async function loadPoles(){
+  try{
+    const r = await fetch('images/data/poles.json', { cache:'no-store' });
+    if (!r.ok) throw 0;
+    const gj = await r.json();
+    const cams = [];
+    for (const f of (gj.features||[])){
+      if (!f.geometry || f.geometry.type!=='Point') continue;
+      const [lng,lat] = f.geometry.coordinates || [];
+      const name = (f.properties && f.properties.name) ? String(f.properties.name) : 'Speed Camera';
+      if (typeof lat==='number' && typeof lng==='number'){
+        cams.push({ name, lat, lon: lng });
+      }
+    }
+    if (cams.length) return cams;
+  }catch(e){}
+  return null; // fallback to seed
+}
+
+/* ---------- Boot ---------- */
+(async function boot(){
+  // Try to use precise poles; else seed
+  const poles = await loadPoles();
+  const cameras = poles || seedCameras;
+
+  initMap(cameras);
+
+  // Build cameraPoints for corridor filter
+  const camPoints = cameras.map(c=>[c.lon, c.lat]);
+  await ensureCorridors(camPoints);
+
+  // Schedule nags (audio preloaded; override mute)
+  scheduleNags();
+})();
+</script>
+</body>
+</html>
