@@ -11,7 +11,6 @@
 <!-- Defer head scripts for faster first paint -->
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<!-- Turf for buffer + helpers -->
 <script defer src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
 <!-- Preload nag VO so it’s ready when needed -->
@@ -19,30 +18,37 @@
 
 <style>
   :root{ --paid-offset-mobile:220px; --paid-offset-desktop:330px; --overlay-top:10px; --shell-max:520px; }
-  html,body{height:100%}
-  body{ margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Arial; font-weight:600; display:flex; flex-direction:column; overflow-x:hidden;}
-  .page{flex:1 0 auto; position:relative;}
-  footer{flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center;}
+  html, body { height:100%; }
+  body{
+    margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Arial; font-weight:600;
+    display:flex; flex-direction:column; overflow-x:hidden;
+  }
+  .page { flex:1 0 auto; position:relative; }
+  footer { flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center; }
 
-  .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden;}
-  .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center;}
+  .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
+  .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none;}
-  .overlay-layer img{ width:100%; height:auto; display:block;}
+  .overlay-layer{
+    position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none;
+  }
+  .overlay-layer img{ width:100%; height:auto; display:block; }
   #overlay-paid{ transform:translateY(-12px); }
 
-  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile);}
+  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
 
   .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
-  .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
-  #warmup.btn-off{ background:#b02a37; border-color:#b02a37; color:#fff;}
-  #warmup.btn-on{  background:#198754; border-color:#198754; color:#fff;}
-  #warmup.btn-mute{background:#b89b00; border-color:#b89b00; color:#111;}
 
-  #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85);}
+  .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
+  #warmup.btn-off   { background:#b02a37; border-color:#b02a37; color:#fff; }
+  #warmup.btn-on    { background:#198754; border-color:#198754; color:#fff; }
+  #warmup.btn-mute  { background:#b89b00; border-color:#b89b00; color:#111; }
+
+  #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
+
   @media (max-width:430px){
     #map{ height:52vh; }
     .camera-list{ max-height:180px; }
@@ -66,14 +72,12 @@
 </style>
 </head>
 <body>
-  <!-- Background video -->
   <div class="video-bg">
     <video id="bgvid" autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
       <source src="videos/background.mp4" type="video/mp4">
     </video>
   </div>
 
-  <!-- Overlay PNGs -->
   <div class="overlay-layer" id="overlay">
     <picture id="overlay-paid">
       <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
@@ -81,20 +85,16 @@
     </picture>
   </div>
 
-  <!-- Page -->
   <div class="page">
     <div class="content-wrap">
       <div class="app-shell">
-        <!-- Controls row -->
         <div class="d-flex gap-2 align-items-center mb-3">
           <a id="payCTA" class="btn btn-primary btn-match" href="#" role="button">Go Pro</a>
           <button id="warmup" class="btn btn-match btn-off" aria-pressed="false">Sound &amp; GPS: Off</button>
         </div>
 
-        <!-- Map -->
         <div id="map" class="mb-3" tabindex="-1"></div>
 
-        <!-- Camera List -->
         <div id="list" class="card mb-3">
           <div class="card-header">Camera Locations</div>
           <ul class="list-group camera-list"></ul>
@@ -103,7 +103,6 @@
     </div>
   </div>
 
-  <!-- SPEED LIMIT sign -->
   <div id="speedSign" class="speed-sign" aria-live="polite" hidden>
     <div class="sign">
       <div class="label">SPEED LIMIT</div>
@@ -112,7 +111,6 @@
     </div>
   </div>
 
-  <!-- Trial Nag -->
   <div id="nag" class="nag-backdrop">
     <div class="nag-wrap">
       <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt">
@@ -149,7 +147,7 @@ bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e
 function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
 addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
 
-/* ---------- SFMTA camera names (for list + voice) ---------- */
+/* ---------- SFMTA camera names (for list + voice + geofence) ---------- */
 const cameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -188,9 +186,8 @@ const cameras = [
 
 /* ---------- Leaflet map ---------- */
 let map, userMarker;
-const poleLayer = L.layerGroup();     // NEW: roadside pole markers (from allpoles.json)
-const areaLayer = L.layerGroup();     // buffered approach polygons
-// (Optional) const lineLayer = L.layerGroup(); // raw lines if you want
+const poleLayer = L.layerGroup();
+const areaLayer = L.layerGroup();
 
 function initMap(){
   map = L.map('map',{ zoomControl:true }).setView([37.7749,-122.4194],12);
@@ -198,7 +195,6 @@ function initMap(){
 
   poleLayer.addTo(map);
   areaLayer.addTo(map);
-  // lineLayer.addTo(map);
 
   // Populate list (on click: center + speak)
   const ul = document.querySelector('.camera-list');
@@ -217,19 +213,39 @@ function initMap(){
 }
 
 /* ---------- Audio unlock / play chain ---------- */
-const REPO = 'sf-speed-alerts';
-const BASE = location.pathname.startsWith('/' + REPO) ? ('/' + REPO) : '';
 const AUDIO_BASE = `${BASE}/images/audio/`;
-
 const AudioUnlock = (() => {
   let ctx = null, unlocked = false;
-  async function unlock(){ if(unlocked) return true; try{ ctx = ctx || new (window.AudioContext||window.webkitAudioContext)(); await ctx.resume(); const b=ctx.createBuffer(1,1,ctx.sampleRate); const s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0); unlocked=true; }catch{} return unlocked; }
-  function onFirstPointer(){ const fn=async()=>{ await unlock(); window.removeEventListener('pointerdown',fn,{once:true}); }; window.addEventListener('pointerdown',fn,{once:true}); }
+  async function unlock(){
+    if (unlocked) return true;
+    try{
+      ctx = ctx || new (window.AudioContext||window.webkitAudioContext)();
+      await ctx.resume();
+      const b = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0);
+      unlocked = true;
+    }catch{}
+    return unlocked;
+  }
+  function onFirstPointer(){
+    const fn = async () => { await unlock(); window.removeEventListener('pointerdown', fn, { once:true }); };
+    window.addEventListener('pointerdown', fn, { once:true });
+  }
   onFirstPointer();
-  return { unlock, get unlocked(){return unlocked}, get ctx(){return ctx} };
+  return { unlock, get unlocked(){ return unlocked; }, get ctx(){ return ctx; } };
 })();
+
 let player = new Audio();
-async function playNow(url){ await AudioUnlock.unlock(); try{ player.pause(); }catch{} return new Promise(res=>{ player=new Audio(url); player.onended=res; player.onerror=res; player.play().catch(()=>res()); }); }
+async function playNow(url){
+  await AudioUnlock.unlock();
+  try { player.pause(); } catch {}
+  return new Promise((resolve) => {
+    player = new Audio(url);
+    player.onended = resolve;
+    player.onerror = resolve;
+    player.play().catch(()=>{ resolve(); });
+  });
+}
 
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
@@ -290,47 +306,34 @@ async function fetchJSON(url){
   return r.json();
 }
 
-/* ---------- ArcGIS corridors -> buffered polygons ---------- */
-const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
-const BUFFER_METERS = 25;
+/* ---------- ArcGIS corridors -> buffered polygons (filtered JSON version) ---------- */
+const CORRIDORS_URL = './corridors_filtered.json'; // filtered to where poles exist
 const POLY_STYLE = { color:'#1e88e5', weight:1.5, opacity:0.9, fillColor:'#1e88e5', fillOpacity:0.18 };
 
-async function addCorridors(){
+async function addCorridorsFromJson(){
   try{
-    const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
-    const fc = await fetchJSON(url);
-
+    const fc = await fetchJSON(CORRIDORS_URL);
     (fc.features||[]).forEach(f=>{
       const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || null;
-      const sp = f.properties?.SPEEDLIMIT ?? f.properties?.POSTED ?? null;
-      if(nm && Number.isFinite(+sp)) SPEED_LIMITS[String(nm)] = +sp;
-
-      if (f.geometry && (f.geometry.type==='LineString' || f.geometry.type==='MultiLineString')) {
-        try {
-          const buffered = turf.buffer(f, BUFFER_METERS, { units:'meters' });
-          if (buffered && buffered.geometry) {
-            const layer = L.geoJSON(buffered, { style: POLY_STYLE }).addTo(areaLayer);
-            layer.bindPopup(nm || 'Approach Area');
-            layer.on('click', () => {
-              if (nm && LOC[nm]) {
-                playLocationOnly(nm);
-              } else {
-                const c = turf.center(buffered)?.geometry?.coordinates;
-                if (Array.isArray(c)) {
-                  const nearest = nearestCameraName(c[1], c[0]);
-                  if (nearest) playLocationOnly(nearest);
-                }
-              }
-            });
+      const layer = L.geoJSON(f, { style: POLY_STYLE }).addTo(areaLayer);
+      layer.bindPopup(nm || 'Approach Area');
+      layer.on('click', () => {
+        if (nm && LOC[nm]) {
+          playLocationOnly(nm);
+        } else {
+          const c = turf.center(f)?.geometry?.coordinates;
+          if (Array.isArray(c)) {
+            const nearest = nearestCameraName(c[1], c[0]);
+            if (nearest) playLocationOnly(nearest);
           }
-        } catch(e){}
-      }
+        }
+      });
     });
-  }catch(e){}
+  }catch(e){ console.warn('Corridors load failed', e); }
 }
 
-/* ---------- Load roadside poles for markers (from allpoles.json) ---------- */
-const POLES_URL = './allpoles.json';
+/* ---------- Load roadside poles for markers (from cleaned file) ---------- */
+const POLES_URL = './allpoles_clean.json';
 function nearestCameraName(lat, lon){
   let best=null, bestD=Infinity;
   for (const c of cameras){
@@ -356,14 +359,14 @@ async function addPoleMarkers(){
     const seen=new Set(), clean=[];
     for(const f of feats){
       const [x,y]=f.geometry.coordinates;
-      const k=`${x.toFixed(5)},${y.toFixed(5)}`;
+      const k=`${(+x).toFixed(5)},${(+y).toFixed(5)}`;
       if(!seen.has(k)){ seen.add(k); clean.push(f); }
     }
 
     const latlngs=[];
     clean.forEach(f=>{
       const [lng,lat]=f.geometry.coordinates;
-      const name = nearestCameraName(lat, lng); // map pole to closest list name
+      const name = nearestCameraName(lat, lng);
       const m = L.marker([lat,lng],{icon:camIcon}).addTo(poleLayer);
       m.bindPopup(name || 'Speed Camera');
       m.on('click', ()=>{ if(name) playLocationOnly(name); });
@@ -372,7 +375,7 @@ async function addPoleMarkers(){
 
     if(latlngs.length){ map.fitBounds(L.latLngBounds(latlngs).pad(0.2)); }
   }catch(e){
-    console.warn('Failed to load allpoles.json:', e);
+    console.warn('Failed to load allpoles_clean.json:', e);
   }
 }
 
@@ -387,7 +390,7 @@ function showSpeedSign(limit){
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* ---------- Geofencing (unchanged for now) ---------- */
+/* ---------- Geofencing (distance to list points, unchanged) ---------- */
 const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 function toRad(d){return d*Math.PI/180}
@@ -442,7 +445,7 @@ function stopGPS(){
   hideSpeedSign();
 }
 
-/* ---------- Sound & GPS tri-state button ---------- */
+/* ---------- Sound & GPS tri-state button (also unlocks audio) ---------- */
 const warmBtn = document.getElementById('warmup');
 let mode = 'off';
 function applyMode(){
@@ -452,15 +455,16 @@ function applyMode(){
   if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only';   startGPS(); }
 }
 warmBtn.addEventListener('click', async ()=>{
+  // this tap doubles as an audio unlock gesture
+  await AudioUnlock.unlock();
   mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
   applyMode();
-  if (mode !== 'off') { await AudioUnlock.unlock(); }
 });
 applyMode();
 
-/* ---------- Nag (unchanged core) ---------- */
-const NAG_FIRST_MS = 120000;
-const NAG_REPEAT_MS = 30*60*1000;
+/* ---------- Trial Nag (every 15 minutes, with WebAudio first) ---------- */
+const NAG_FIRST_MS  = 120000;
+const NAG_REPEAT_MS = 15*60*1000; // 15 minutes
 const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
 const NAG_AUDIO_URL = `${BASE}/images/audio/Ad1.mp3`;
 
@@ -474,7 +478,7 @@ let nagBuffer = null;
 let nagBufferReady = false;
 
 function blockPage(){ document.body.style.pointerEvents = 'none'; nagEl.style.pointerEvents = 'none'; }
-function unblockPage(){ document.body.style.pointerEvents = ''; nagEl.style.pointerEvents = 'auto'; }
+function unblockPage(){ document.body.style.pointerEvents = '';   nagEl.style.pointerEvents = 'auto'; }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 async function waitForGeofenceIdle(timeoutMs=15000){
   const start = Date.now();
@@ -579,6 +583,30 @@ async function showNag(){
 setTimeout(showNag, NAG_FIRST_MS);
 setInterval(showNag, NAG_REPEAT_MS);
 
+/* ---------- Location audio chain ---------- */
+let geofencePlaying = false;
+async function playGeofenceAlert(name){
+  const f=LOC[name]; if(!f) return;
+  geofencePlaying = true;
+  try{
+    const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
+    for (const url of seq){ await playNow(url); }
+  } finally { geofencePlaying = false; }
+  if(navigator.vibrate) navigator.vibrate([250,100,250]);
+}
+
+/* ---------- Boot ---------- */
+(async function boot(){
+  initMap();
+  await Promise.all([
+    addCorridorsFromJson(), // visible polygons; click to speak
+    addPoleMarkers()        // roadside markers from cleaned JSON; click to speak
+  ]);
+  ensureNagBuffer().catch(()=>{});
+  // Gentle preload after initial render
+  setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 4); }, 300);
+})();
+
 /* ---------- Gentle audio preloader ---------- */
 function buildAudioUrls(){
   const urls = [];
@@ -598,16 +626,6 @@ async function preloadAudioList(urls, concurrency=4){
   await Promise.all(workers);
 }
 
-/* ---------- Boot ---------- */
-(async function boot(){
-  initMap();
-  await Promise.all([
-    addCorridors(),
-    addPoleMarkers()  // << roadside markers from allpoles.json + click-to-speak
-  ]);
-  ensureNagBuffer().catch(()=>{});
-  setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 4); }, 300);
-})();
 }); // DOMContentLoaded
 </script>
 </body>
