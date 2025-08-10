@@ -24,7 +24,8 @@
     --paid-offset-desktop: 330px;
     --overlay-top: 10px;
     --shell-max: 520px;
-    --overlay-paid-offset: -12px; /* tweak here if you want ± px */
+    /* raised up an extra 12px (was -12px); now -24px total */
+    --overlay-paid-offset: -24px;
   }
   html, body { height:100%; }
   body{
@@ -176,7 +177,8 @@ window.addEventListener('DOMContentLoaded', () => {
   function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
   addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
 
-  /* ===== Cameras (names for list, voice, geofence) ===== */
+  /* ===== Cameras (names for list, voice, geofence) =====
+     NOTE: No inference of limits. If you have vetted limits, add `speedLimit:<number>` per camera. */
   const cameras = [
     {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
     {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -343,7 +345,7 @@ window.addEventListener('DOMContentLoaded', () => {
         const layer = L.geoJSON(f, { style: POLY_STYLE }).addTo(areaLayer);
         layer.bindPopup(nm || 'Approach Area');
 
-        // Block any accidental link clicks in the popup (iOS data detectors)
+        // Block accidental link clicks in the popup (iOS data detectors)
         layer.on('popupopen', e=>{
           const el = e.popup.getElement();
           if (!el) return;
@@ -424,8 +426,12 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* ===== Speed sign & geofence (unchanged functional) ===== */
+  /* ===== Speed sign (explicit only; no inference) ===== */
   const SPEED_LIMITS = {};
+  for (const c of cameras) {
+    if (Number.isFinite(c.speedLimit)) SPEED_LIMITS[c.name] = c.speedLimit;
+  }
+
   function showSpeedSign(limit){
     const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
     if (!box || !val) return;
@@ -489,6 +495,7 @@ window.addEventListener('DOMContentLoaded', () => {
   let mode = 'off';
   function applyMode(){
     warmBtn.classList.remove('btn-off','btn-on','btn-mute');
+    warmBtn.setAttribute('aria-pressed', String(mode==='on'));
     if(mode==='off'){ warmBtn.classList.add('btn-off'); warmBtn.textContent='Sound & GPS: Off'; stopGPS(); }
     if(mode==='on'){  warmBtn.classList.add('btn-on');  warmBtn.textContent='Sound & GPS: On';  startGPS(); }
     if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only';   startGPS(); }
@@ -503,7 +510,7 @@ window.addEventListener('DOMContentLoaded', () => {
   /* ===== Trial Nag every 15 min ===== */
   const NAG_FIRST_MS  = 120000;
   const NAG_REPEAT_MS = 15*60*1000;
-  const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
+  const NAG_IMAGES = [`${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png`];
   const NAG_AUDIO_URL = `${BASE}/images/audio/Ad1.mp3`;
 
   const nagEl  = document.getElementById('nag');
