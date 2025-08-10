@@ -10,6 +10,9 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
+<!-- Preload nag VO so it’s ready when needed -->
+<link rel="preload" as="audio" href="images/audio/Ad1.mp3" type="audio/mpeg">
+
 <style>
   :root{
     /* Content offsets under overlay PNGs (smaller = higher content) */
@@ -18,6 +21,9 @@
 
     /* Overlay PNG distance from top */
     --overlay-top: 10px;
+
+    /* Max width for the app shell */
+    --shell-max: 520px;
   }
 
   html, body { height:100%; }
@@ -40,6 +46,9 @@
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; }
   .content-wrap{ margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
+
+  /* App shell: centers and caps width for controls/map/list */
+  .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
 
   /* Buttons */
   .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
@@ -82,13 +91,8 @@
 
   <!-- Overlay PNGs -->
   <div class="overlay-layer" id="overlay">
-    <!-- UNPAID art (we show the “free” hero copy art as the header art for trial) -->
-    <picture id="overlay-free">
-      <source id="ovFreeSrcM" media="(max-width: 1200px)" srcset="">
-      <img id="ovFreeImg" src="" alt="SF Speed Cameras">
-    </picture>
-    <!-- PAID art (logo-only art; kept for future variants) -->
-    <picture id="overlay-paid" style="display:none;">
+    <!-- PAID art only -->
+    <picture id="overlay-paid">
       <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
       <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)">
     </picture>
@@ -97,19 +101,21 @@
   <!-- Page -->
   <div class="page">
     <div class="content-wrap">
-      <!-- Controls row -->
-      <div class="d-flex gap-2 align-items-center mb-3">
-        <a id="payCTA" class="btn btn-primary btn-match" href="#" role="button">Go Pro</a>
-        <button id="warmup" class="btn btn-match btn-off" aria-pressed="false">Sound &amp; GPS: Off</button>
-      </div>
+      <div class="app-shell">
+        <!-- Controls row -->
+        <div class="d-flex gap-2 align-items-center mb-3">
+          <a id="payCTA" class="btn btn-primary btn-match" href="#" role="button">Go Pro</a>
+          <button id="warmup" class="btn btn-match btn-off" aria-pressed="false">Sound &amp; GPS: Off</button>
+        </div>
 
-      <!-- Map -->
-      <div id="map" class="mb-3" tabindex="-1"></div>
+        <!-- Map -->
+        <div id="map" class="mb-3" tabindex="-1"></div>
 
-      <!-- Camera List -->
-      <div id="list" class="card mb-3">
-        <div class="card-header">Camera Locations</div>
-        <ul class="list-group camera-list"></ul>
+        <!-- Camera List -->
+        <div id="list" class="card mb-3">
+          <div class="card-header">Camera Locations</div>
+          <ul class="list-group camera-list"></ul>
+        </div>
       </div>
     </div>
   </div>
@@ -149,14 +155,9 @@ window.addEventListener('load', () => {
 const REPO = 'sf-speed-alerts';
 const BASE = location.pathname.startsWith('/' + REPO) ? ('/' + REPO) : '';
 
-// Use PAID header art
+/* ---------- Paid header art ---------- */
 document.getElementById('ovPaidSrcM').srcset = `${BASE}/images/Copyblockmobile_paid.png`;
 document.getElementById('ovPaidImg').src     = `${BASE}/images/Copyblockdesktop_paid.png`;
-
-// Hide FREE, show PAID
-document.getElementById('overlay-free').style.display = 'none';
-document.getElementById('overlay-paid').style.display = '';
-
 
 /* ---------- Stripe link (open in new tab for reliability) ---------- */
 const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
@@ -358,10 +359,17 @@ const LOC = {
 
 function pick(a){return a[Math.floor(Math.random()*a.length)]}
 function playLocationOnly(name){ const f=LOC[name]; if(f) playNow(`${AUDIO_BASE}${f}`); }
+
+let geofencePlaying = false;
 async function playGeofenceAlert(name){
   const f=LOC[name]; if(!f) return;
-  const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
-  for (const url of seq){ await playNow(url); }
+  geofencePlaying = true;
+  try {
+    const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
+    for (const url of seq){ await playNow(url); }
+  } finally {
+    geofencePlaying = false;
+  }
   if(navigator.vibrate) navigator.vibrate([250,100,250]);
 }
 
@@ -398,7 +406,7 @@ async function addCorridors(){
   }
 }
 
-/* ---------- Geofencing (simplified gates; same thresholds we proved out) ---------- */
+/* ---------- Geofencing (simplified gates; proven thresholds) ---------- */
 const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 function toRad(d){return d*Math.PI/180}
@@ -471,15 +479,17 @@ warmBtn.addEventListener('click', async ()=>{
 });
 applyMode();
 
-/* ---------- Trial Nag (locked to VO; 120s then every 30m) ---------- */
+/* ---------- Trial Nag (locked to VO; waits for geofence; retries on fail) ---------- */
 const NAG_FIRST_MS = 120000;      // 120 s first
 const NAG_REPEAT_MS = 30*60*1000; // 30 min repeat
 const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
-const NAG_AUDIO  = `${BASE}/images/audio/Ad1.mp3`;
+const NAG_AUDIO_URL = `${BASE}/images/audio/Ad1.mp3`;
 
 const nagEl  = document.getElementById('nag');
 const nagImg = document.getElementById('nagImg');
 const nagCount = document.getElementById('nagCountdown');
+const nagAudio = new Audio(NAG_AUDIO_URL);
+nagAudio.preload = 'auto';
 
 let nagPlaying = false;
 
@@ -491,6 +501,22 @@ function unblockPage() {
   document.body.style.pointerEvents = '';
   nagEl.style.pointerEvents = 'auto';
 }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function waitForGeofenceIdle(timeoutMs=15000){
+  const start = Date.now();
+  while (geofencePlaying && (Date.now()-start)<timeoutMs){ await sleep(100); }
+}
+
+async function playNagAudioWithRetry(){
+  await AudioUnlock.unlock();
+  try {
+    await nagAudio.play();
+  } catch (e) {
+    // small retry (helps when device is busy/laggy)
+    await sleep(300);
+    try { await nagAudio.play(); } catch (e2) { console.warn('Nag audio failed to start:', e2); }
+  }
+}
 
 async function showNag(){
   if (nagPlaying) return;
@@ -500,33 +526,35 @@ async function showNag(){
   nagEl.style.display = 'flex';
   blockPage();
 
-  // countdown fallback (25s); sync to VO duration when known
+  // Countdown fallback 25s; sync when metadata available
   let left = 25;
   nagCount.textContent = left;
   const timer = setInterval(()=>{ left = Math.max(0, left-1); nagCount.textContent = left; }, 1000);
 
-  await AudioUnlock.unlock();
-  const vo = new Audio(NAG_AUDIO);
-  vo.addEventListener('loadedmetadata', () => {
-    if (isFinite(vo.duration) && vo.duration > 1) {
-      left = Math.ceil(vo.duration);
+  // If metadata loads, sync countdown to actual duration
+  const metaHandler = () => {
+    if (isFinite(nagAudio.duration) && nagAudio.duration > 1) {
+      left = Math.ceil(nagAudio.duration);
       nagCount.textContent = left;
     }
-  });
-  const startVO = async () => { try { await vo.play(); } catch {} };
-  try { await startVO(); }
-  catch {
-    const resume = async () => { await startVO(); window.removeEventListener('pointerdown', resume, { once:true }); };
-    window.addEventListener('pointerdown', resume, { once:true });
-  }
+    nagAudio.removeEventListener('loadedmetadata', metaHandler);
+  };
+  nagAudio.addEventListener('loadedmetadata', metaHandler);
 
-  vo.onended = () => {
+  // Wait for any geofence sequence to finish so sounds don't fight
+  await waitForGeofenceIdle();
+
+  // Try to play the nag VO
+  await playNagAudioWithRetry();
+
+  nagAudio.onended = () => {
     clearInterval(timer);
     nagCount.textContent = '0';
-    // Now allow dismissal and Buy click
+    // Enable clicks only after VO ends
     nagEl.onclick = () => { nagEl.style.display='none'; };
     nagImg.onclick = () => { window.open(STRIPE_URL, '_blank', 'noopener'); nagEl.style.display='none'; };
     unblockPage();
+    // Auto-hide after 8s if ignored
     setTimeout(()=>{ if(nagEl.style.display==='flex'){ nagEl.style.display='none'; } }, 8000);
     nagPlaying = false;
   };
@@ -534,10 +562,43 @@ async function showNag(){
 setTimeout(showNag, NAG_FIRST_MS);
 setInterval(showNag, NAG_REPEAT_MS);
 
+/* ---------- Gentle audio preloader (stems, tags, locations) ---------- */
+function buildAudioUrls(){
+  const urls = [];
+  // stems
+  for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
+  // tags
+  for (const t of TAGS) urls.push(`${AUDIO_BASE}${t}`);
+  // locations (from LOC map values)
+  Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`));
+  return urls;
+}
+// Throttled preloader to avoid network spike
+async function preloadAudioList(urls, concurrency=4){
+  const queue = [...urls];
+  const workers = Array.from({length:concurrency}, async ()=>{
+    while(queue.length){
+      const url = queue.shift();
+      try{
+        const a = new Audio();
+        a.preload = 'auto';
+        a.src = url;
+        // Kick off fetch without awaiting oncanplaythrough (faster page load)
+        a.load();
+        await sleep(60); // tiny stagger
+      }catch(e){}
+    }
+  });
+  await Promise.all(workers);
+}
+
 /* ---------- Boot ---------- */
 (async function boot(){
   initMap();
   addCorridors(); // best-effort; app still works if it fails
+
+  // Start preloading after a tick (let map paint first)
+  setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 4); }, 300);
 })();
 </script>
 </body>
