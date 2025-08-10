@@ -149,11 +149,14 @@ window.addEventListener('load', () => {
 const REPO = 'sf-speed-alerts';
 const BASE = location.pathname.startsWith('/' + REPO) ? ('/' + REPO) : '';
 
-/* ---------- Wire image sources to BASE (prevents 404s) ---------- */
-document.getElementById('ovFreeSrcM').srcset = `${BASE}/images/Copyblockmobile.png`;
-document.getElementById('ovFreeImg').src     = `${BASE}/images/Copyblockdesktop.png`;
+// Use PAID header art
 document.getElementById('ovPaidSrcM').srcset = `${BASE}/images/Copyblockmobile_paid.png`;
 document.getElementById('ovPaidImg').src     = `${BASE}/images/Copyblockdesktop_paid.png`;
+
+// Hide FREE, show PAID
+document.getElementById('overlay-free').style.display = 'none';
+document.getElementById('overlay-paid').style.display = '';
+
 
 /* ---------- Stripe link (open in new tab for reliability) ---------- */
 const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
