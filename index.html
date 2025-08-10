@@ -16,7 +16,7 @@
 <style>
   :root{
     /* Content offsets under overlay PNGs (smaller = higher content) */
-    --paid-offset-mobile: 260px;
+    --paid-offset-mobile: 220px;   /* tightened for phones (was 260px) */
     --paid-offset-desktop: 330px;
 
     /* Overlay PNG distance from top */
@@ -32,7 +32,7 @@
     display:flex; flex-direction:column; overflow-x:hidden;
   }
   .page { flex:1 0 auto; position:relative; }
-  footer { flex:0 0 auto; padding:14px 0 18px; text-align:center; }
+  footer { flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center; }
 
   /* Background video */
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
@@ -61,6 +61,13 @@
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
+
+  /* Phone-specific tightening */
+  @media (max-width:430px){
+    #map{ height:52vh; }
+    .camera-list{ max-height:180px; }
+    .content-wrap{ margin-top:200px; } /* sits nicer under hero on iPhone */
+  }
 
   /* User dot */
   .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
@@ -412,7 +419,7 @@ const insideNow = new Set(), lastAlertAt = new Map();
 function toRad(d){return d*Math.PI/180}
 function distKm(aLat,aLon,bLat,bLon){
   const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
-  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(blat))*Math.sin(dLon/2)**2;
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
 }
 function passesGates(coords){
@@ -490,6 +497,7 @@ const nagImg = document.getElementById('nagImg');
 const nagCount = document.getElementById('nagCountdown');
 const nagAudio = new Audio(NAG_AUDIO_URL);
 nagAudio.preload = 'auto';
+nagAudio.crossOrigin = 'anonymous';
 
 let nagPlaying = false;
 
@@ -509,12 +517,30 @@ async function waitForGeofenceIdle(timeoutMs=15000){
 
 async function playNagAudioWithRetry(){
   await AudioUnlock.unlock();
+
+  // iOS reliability: always rewind & reload before play
+  try { nagAudio.pause(); } catch {}
+  try { nagAudio.currentTime = 0; } catch {}
+  try { nagAudio.load(); } catch {}
+
   try {
     await nagAudio.play();
-  } catch (e) {
-    // small retry (helps when device is busy/laggy)
+    return true;
+  } catch {
     await sleep(300);
-    try { await nagAudio.play(); } catch (e2) { console.warn('Nag audio failed to start:', e2); }
+    try {
+      await nagAudio.play();
+      return true;
+    } catch (e2) {
+      // Fallback: require one tap on the popup to start audio (still locked; cannot dismiss)
+      nagEl.style.pointerEvents = 'auto';
+      nagEl.onclick = async (ev)=>{
+        ev.stopPropagation();
+        nagEl.onclick = null;
+        try { await nagAudio.play(); } catch {}
+      };
+      return false;
+    }
   }
 }
 
@@ -544,7 +570,7 @@ async function showNag(){
   // Wait for any geofence sequence to finish so sounds don't fight
   await waitForGeofenceIdle();
 
-  // Try to play the nag VO
+  // Try to play the nag VO (with retries / tap fallback)
   await playNagAudioWithRetry();
 
   nagAudio.onended = () => {
@@ -565,15 +591,11 @@ setInterval(showNag, NAG_REPEAT_MS);
 /* ---------- Gentle audio preloader (stems, tags, locations) ---------- */
 function buildAudioUrls(){
   const urls = [];
-  // stems
-  for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
-  // tags
-  for (const t of TAGS) urls.push(`${AUDIO_BASE}${t}`);
-  // locations (from LOC map values)
-  Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`));
+  for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);       // stems
+  for (const t of TAGS)  urls.push(`${AUDIO_BASE}${t}`);       // tags
+  Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`)); // locations
   return urls;
 }
-// Throttled preloader to avoid network spike
 async function preloadAudioList(urls, concurrency=4){
   const queue = [...urls];
   const workers = Array.from({length:concurrency}, async ()=>{
@@ -583,7 +605,6 @@ async function preloadAudioList(urls, concurrency=4){
         const a = new Audio();
         a.preload = 'auto';
         a.src = url;
-        // Kick off fetch without awaiting oncanplaythrough (faster page load)
         a.load();
         await sleep(60); // tiny stagger
       }catch(e){}
