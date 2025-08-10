@@ -37,7 +37,9 @@
 
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
-  #overlay-paid{ transform:translateY(var(--overlay-paid-offset)); }
+  /* Move the PAID overlay image up by 12px (Safari-friendly) */
+  /* (Applied on the IMG itself rather than the <picture> wrapper) */
+  #ovPaidImg{ transform:translateY(var(--overlay-paid-offset)) !important; will-change:transform; }
 
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
@@ -56,7 +58,8 @@
   @media (max-width:430px){
     #map{ height:52vh; }
     .camera-list{ max-height:180px; }
-    .content-wrap{ margin-top:200px; }
+    /* keep using the var so offsets are consistent across viewports */
+    .content-wrap{ margin-top:var(--paid-offset-mobile); }
   }
 
   .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
@@ -95,7 +98,7 @@
     <div class="content-wrap">
       <div class="app-shell">
         <div class="d-flex gap-2 align-items-center mb-3">
-          <a id="payCTA" class="btn btn-primary btn-match" href="#" role="button">Go Pro</a>
+          <a id="payCTA" class="btn btn-primary btn-match" href="#" aria-label="Upgrade to Pro">Go Pro</a>
           <button id="warmup" class="btn btn-match btn-off" aria-pressed="false">Sound &amp; GPS: Off</button>
         </div>
 
@@ -148,11 +151,16 @@ window.addEventListener('DOMContentLoaded', () => {
     srcEl.src = `${BASE}/videos/background.mp4`;
     bg.load();
     const p = bg.play(); if (p && p.catch) p.catch(()=>{});
+    bg.addEventListener('playing', () => bg.removeAttribute('poster'), { once:true });
   }
 
   /* -------- Overlay PNGs -------- */
   document.getElementById('ovPaidSrcM').srcset = `${BASE}/images/Copyblockmobile_paid.png`;
   document.getElementById('ovPaidImg').src     = `${BASE}/images/Copyblockdesktop_paid.png`;
+  // Extra nudge in case Safari ignores stylesheet transform:
+  document.getElementById('ovPaidImg').addEventListener('load', () => {
+    document.getElementById('ovPaidImg').style.transform = `translateY(var(--overlay-paid-offset))`;
+  }, { once:true });
 
   /* -------- Stripe -------- */
   const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
@@ -228,6 +236,7 @@ window.addEventListener('DOMContentLoaded', () => {
   let map, userMarker;
   const poleLayer = L.layerGroup();
   const areaLayer = L.layerGroup();
+  const corridorPolys = []; // geojson Feature<Polygon|MultiPolygon>[] for in-zone checks
 
   function initMap(){
     map = L.map('map',{ zoomControl:true }).setView([37.7749,-122.4194],12);
@@ -271,6 +280,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   let player = new Audio();
   async function playNow(url){
+    if (mode === 'mute') return Promise.resolve(); // silence in mute mode
     await AudioUnlock.unlock();
     try { player.pause(); } catch {}
     return new Promise((resolve) => {
@@ -334,14 +344,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- Poles & Corridors (robust load + draw) -------- */
   const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
-  const POLES_URL = `${DATA_BASE}/allpoles.json`;
-  const POLY_STYLE = { color:'#1e88e5', weight:1.5, opacity:0.9, fillColor:'#1e88e5', fillOpacity:0.18 };
+  const POLES_URL = `${DATA_BASE}/poles.json`;  // renamed
+
+  // Fill-only style, no outline
+  const POLY_STYLE = { stroke:false, weight:0, color:'#1e88e5', opacity:0, fillColor:'#1e88e5', fillOpacity:0.18 };
 
   function toRad(d){return d*Math.PI/180}
   function distKm(aLat,aLon,bLat,bLon){
     const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
     const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
-    return R*2*Math.atan2(Math.sqrt(s),Math.atan2(Math.sqrt(1-s),Math.sqrt(s))); // stable
+    return R*2*Math.atan2(Math.sqrt(s),Math.atan2(Math.sqrt(1-s),Math.sqrt(s)));
   }
   function nearestCameraName(lat, lon){
     let best=null, bestD=Infinity;
@@ -352,10 +364,25 @@ window.addEventListener('DOMContentLoaded', () => {
     return best;
   }
 
+  function pushCorridorPolys(geo){
+    if (!geo) return;
+    if (geo.type === 'Feature') corridorPolys.push(geo);
+    else if (geo.type === 'FeatureCollection' && Array.isArray(geo.features)){
+      geo.features.forEach(f => corridorPolys.push(f));
+    }
+  }
+
   function addCorridors(fc){
     (fc.features||[]).forEach(f=>{
+      const t = f.geometry?.type || '';
+      // If LineString/MultiLineString, buffer ~30m to create a polygon corridor
+      const polyFeat = (t.includes('Line'))
+        ? turf.buffer(f, 0.03, { units:'kilometers' })
+        : f;
+
+      const layer = L.geoJSON(polyFeat, { style: POLY_STYLE }).addTo(areaLayer);
+
       const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || null;
-      const layer = L.geoJSON(f, { style: POLY_STYLE }).addTo(areaLayer);
       layer.bindPopup(nm || 'Approach Area');
       layer.on('popupopen', e=>{
         const el = e.popup.getElement();
@@ -366,13 +393,15 @@ window.addEventListener('DOMContentLoaded', () => {
         if (nm && LOC[nm]) {
           playLocationOnly(nm);
         } else {
-          const c = turf.center(f)?.geometry?.coordinates;
+          const c = turf.center(polyFeat)?.geometry?.coordinates;
           if (Array.isArray(c)) {
             const nearest = nearestCameraName(c[1], c[0]);
             if (nearest) playLocationOnly(nearest);
           }
         }
       });
+
+      pushCorridorPolys(polyFeat);
     });
   }
 
@@ -409,7 +438,7 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
   /* -------- Speed sign (explicit-only) -------- */
-  const SPEED_LIMITS = {}; // will be filled by loader if you use it
+  const SPEED_LIMITS = {}; // will be filled by loader if provided
   function showSpeedSign(limit){
     const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
     if (!box || !val) return;
@@ -419,7 +448,8 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-  const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
+  // gates / timing
+  const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 60, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
   const insideNow = new Set(), lastAlertAt = new Map();
 
   function passesGates(coords){
@@ -429,7 +459,16 @@ window.addEventListener('DOMContentLoaded', () => {
     return true;
   }
 
-  function startGPS(){
+  function isInsideAnyCorridor(lat, lon){
+    try{
+      const pt = turf.point([lon, lat]);
+      return corridorPolys.some(poly => {
+        try { return turf.booleanPointInPolygon(pt, poly); } catch { return false; }
+      });
+    }catch{ return false; }
+  }
+
+  async function startGPS(){
     if(!('geolocation' in navigator)) return;
     if(window.__watchId!=null) return;
     if (!map.hasLayer(userMarker)) userMarker.addTo(map);
@@ -440,20 +479,26 @@ window.addEventListener('DOMContentLoaded', () => {
 
       userMarker.setLatLng([latitude,longitude]);
 
+      const inCorridor = isInsideAnyCorridor(latitude, longitude);
+      const nearestName = nearestCameraName(latitude, longitude);
+
       const now=Date.now();
       for(const cam of cameras){
         const dM = distKm(latitude, longitude, cam.lat, cam.lon)*1000;
-        const inZone = dM <= ENTER_M, wasIn = insideNow.has(cam.name);
+        const nearPoint = dM <= ENTER_M;
+        const inCorridorForThisCam = inCorridor && (nearestName === cam.name);
+        const inZone = nearPoint || inCorridorForThisCam;
+
+        const wasIn = insideNow.has(cam.name);
 
         if(!wasIn && inZone){
           const last = lastAlertAt.get(cam.name)||0;
           if(now-last>COOLDOWN_MS){
             playGeofenceAlert(cam.name);
-            showSpeedSign(SPEED_LIMITS[cam.name]);
             lastAlertAt.set(cam.name, now);
           }
           insideNow.add(cam.name);
-        } else if (wasIn && dM > EXIT_M){
+        } else if (wasIn && !inZone && dM > EXIT_M){
           insideNow.delete(cam.name);
           hideSpeedSign();
         }
@@ -541,10 +586,13 @@ window.addEventListener('DOMContentLoaded', () => {
   async function playGeofenceAlert(name){
     const f=LOC[name]; if(!f) return;
     try{
-      const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
-      for (const url of seq){ await playNow(url); }
+      if (mode !== 'mute') {
+        const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
+        for (const url of seq){ await playNow(url); }
+      }
     } finally {}
     if(navigator.vibrate) navigator.vibrate([250,100,250]);
+    showSpeedSign(SPEED_LIMITS[name]);
   }
 
   /* -------- Speed limits loader (authoritative JSON; optional) -------- */
