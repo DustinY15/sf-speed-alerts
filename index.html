@@ -38,7 +38,6 @@
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
   /* Move the PAID overlay image up by 12px (Safari-friendly) */
-  /* (Applied on the IMG itself rather than the <picture> wrapper) */
   #ovPaidImg{ transform:translateY(var(--overlay-paid-offset)) !important; will-change:transform; }
 
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
@@ -58,13 +57,12 @@
   @media (max-width:430px){
     #map{ height:52vh; }
     .camera-list{ max-height:180px; }
-    /* keep using the var so offsets are consistent across viewports */
     .content-wrap{ margin-top:var(--paid-offset-mobile); }
   }
 
   .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
 
-  .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
+  .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:70; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
   .speed-sign.show { opacity:1; transform:translateX(-50%) translateY(0); }
   .speed-sign .sign{ background:#fff; color:#000; border:4px solid #000; border-radius:10px; width:min(46vw, 280px); padding:10px 14px 12px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
   .speed-sign .label{ font-weight:800; letter-spacing:.06em; text-align:center; font-size:14px; margin-bottom:4px; }
@@ -82,8 +80,8 @@
 </head>
 <body>
   <div class="video-bg">
-    <video id="bgvid" autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
-      <source id="bgvidSrc" src="" type="video/mp4">
+    <video id="bgvid" autoplay loop muted playsinline preload="auto" poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
+      <source id="bgvidSrc" src="" type="video/mp4" crossorigin="anonymous">
     </video>
   </div>
 
@@ -106,7 +104,7 @@
 
         <div id="list" class="card mb-3">
           <div class="card-header">Camera Locations</div>
-          <ul class="list-group camera-list"></ul>
+          <ul class="list-group camera-list" role="listbox"></ul>
         </div>
       </div>
     </div>
@@ -139,7 +137,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- BASE (works on GitHub Pages or root domain) -------- */
   const REPO = 'sf-speed-alerts';
-  const onRepo = location.hostname.endsWith('github.io') && location.pathname.startsWith('/' + REPO + '/');
+  const path = location.pathname.replace(/\/+$/, '');
+  const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO);
   const BASE = onRepo ? ('/' + REPO) : '';
   const DATA_BASE = `${BASE}/data`;
 
@@ -150,17 +149,16 @@ window.addEventListener('DOMContentLoaded', () => {
     bg.muted = true; bg.setAttribute('muted',''); bg.setAttribute('playsinline',''); bg.setAttribute('webkit-playsinline','');
     srcEl.src = `${BASE}/videos/background.mp4`;
     bg.load();
-    const p = bg.play(); if (p && p.catch) p.catch(()=>{});
-    bg.addEventListener('playing', () => bg.removeAttribute('poster'), { once:true });
+    const retryPlay = () => { const p = bg.play(); if (p && p.catch) p.catch(()=> setTimeout(()=> bg.play().catch(()=>{}), 100)); };
+    bg.addEventListener('loadeddata', () => bg.removeAttribute('poster'), { once:true });
+    retryPlay();
   }
 
   /* -------- Overlay PNGs -------- */
   document.getElementById('ovPaidSrcM').srcset = `${BASE}/images/Copyblockmobile_paid.png`;
-  document.getElementById('ovPaidImg').src     = `${BASE}/images/Copyblockdesktop_paid.png`;
-  // Extra nudge in case Safari ignores stylesheet transform:
-  document.getElementById('ovPaidImg').addEventListener('load', () => {
-    document.getElementById('ovPaidImg').style.transform = `translateY(var(--overlay-paid-offset))`;
-  }, { once:true });
+  const paidImg = document.getElementById('ovPaidImg');
+  paidImg.src = `${BASE}/images/Copyblockdesktop_paid.png`;
+  paidImg.addEventListener('load', () => { void paidImg.offsetHeight; paidImg.style.transform = `translateY(var(--overlay-paid-offset))`; }, { once:true });
 
   /* -------- Stripe -------- */
   const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
@@ -195,48 +193,11 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  /* -------- Cameras (no speed-limit inference) -------- */
-  const cameras = [
-    {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
-    {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
-    {name:"Geary Blvd from 7th to 8th Ave",lat:37.7805,lon:-122.4660},
-    {name:"Fulton St from 2nd Ave to Arguello Blvd",lat:37.7735,lon:-122.4550},
-    {name:"Geary Blvd from Webster to Buchanan St",lat:37.7845,lon:-122.4310},
-    {name:"Turk St from Van Ness Ave to Polk St",lat:37.7820,lon:-122.4195},
-    {name:"Bay St from Octavia to Gough St",lat:37.8040,lon:-122.4230},
-    {name:"Franklin St from Union to Green St",lat:37.8000,lon:-122.4235},
-    {name:"Columbus Ave from Lombard to Greenwich St",lat:37.8025,lon:-122.4135},
-    {name:"Broadway from Powell to Stockton St",lat:37.7975,lon:-122.4075},
-    {name:"The Embarcadero from Green to Battery St",lat:37.8070,lon:-122.4005},
-    {name:"Mission St from 8th to 9th St",lat:37.7740,lon:-122.4110},
-    {name:"10th St from Harrison to Folsom St",lat:37.7715,lon:-122.4115},
-    {name:"9th St from Bryant to Harrison St",lat:37.7725,lon:-122.4090},
-    {name:"7th St from Harrison to Folsom St",lat:37.7745,lon:-122.4065},
-    {name:"Harrison St from 4th to 5th St",lat:37.7795,lon:-122.4015},
-    {name:"Bryant St from 2nd to 3rd St",lat:37.7820,lon:-122.3965},
-    {name:"King St (EB only) from 4th to 5th St",lat:37.7775,lon:-122.3940},
-    {name:"Market St from Danvers to Douglass St",lat:37.7615,lon:-122.4320},
-    {name:"Guerrero St from 19th to 20th St",lat:37.7590,lon:-122.4230},
-    {name:"16th St from Bryant St to Potrero Ave",lat:37.7650,lon:-122.4075},
-    {name:"San Jose Ave from 29th to 30th St",lat:37.7435,lon:-122.4235},
-    {name:"Cesar Chavez St from Folsom to Harrison St",lat:37.7480,lon:-122.4035},
-    {name:"Cesar Chavez St from Indiana to Tennessee St",lat:37.7505,lon:-122.3900},
-    {name:"3rd St (NB only) from Key to Jamestown Ave",lat:37.7275,lon:-122.3885},
-    {name:"Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave",lat:37.7100,lon:-122.3990},
-    {name:"Geneva Ave from Prague St to Brookdale Ave",lat:37.7130,lon:-122.4405},
-    {name:"Mission St from Ottawa Ave to Allison St",lat:37.7145,lon:-122.4400},
-    {name:"Alemany Blvd from Farragut to Naglee Ave",lat:37.7320,lon:-122.4425},
-    {name:"Ocean Ave from Frida Kahlo Way to Howth St",lat:37.7235,lon:-122.4525},
-    {name:"San Jose Ave from Santa Ynez to Ocean Ave",lat:37.7280,lon:-122.4430},
-    {name:"Monterey Blvd from Edna to Congo St",lat:37.7315,lon:-122.4650},
-    {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
-  ];
-
   /* -------- Map -------- */
   let map, userMarker;
   const poleLayer = L.layerGroup();
   const areaLayer = L.layerGroup();
-  const corridorPolys = []; // geojson Feature<Polygon|MultiPolygon>[] for in-zone checks
+  const corridorPolys = []; // Feature<Polygon|MultiPolygon>[] for in-zone checks
 
   function initMap(){
     map = L.map('map',{ zoomControl:true }).setView([37.7749,-122.4194],12);
@@ -245,15 +206,7 @@ window.addEventListener('DOMContentLoaded', () => {
     areaLayer.addTo(map);
 
     const ul = document.querySelector('.camera-list');
-    if (ul){
-      cameras.forEach(c=>{
-        const li=document.createElement('li');
-        li.className='list-group-item';
-        li.textContent=c.name;
-        li.addEventListener('click',()=>{ map.setView([c.lat,c.lon],15); playLocationOnly(c.name); });
-        ul.appendChild(li);
-      });
-    }
+    ul?.setAttribute('role','listbox');
 
     const dot = L.divIcon({ className:'loc-dot' });
     userMarker = L.marker([37.7749,-122.4194],{icon:dot});
@@ -280,7 +233,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   let player = new Audio();
   async function playNow(url){
-    if (mode === 'mute') return Promise.resolve(); // silence in mute mode
+    if (mode === 'mute') return Promise.resolve();
     await AudioUnlock.unlock();
     try { player.pause(); } catch {}
     return new Promise((resolve) => {
@@ -344,7 +297,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- Poles & Corridors (robust load + draw) -------- */
   const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
-  const POLES_URL = `${DATA_BASE}/poles.json`;  // renamed
+  const POLES_URL = `${DATA_BASE}/poles.json`;
 
   // Fill-only style, no outline
   const POLY_STYLE = { stroke:false, weight:0, color:'#1e88e5', opacity:0, fillColor:'#1e88e5', fillOpacity:0.18 };
@@ -366,10 +319,12 @@ window.addEventListener('DOMContentLoaded', () => {
 
   function pushCorridorPolys(geo){
     if (!geo) return;
-    if (geo.type === 'Feature') corridorPolys.push(geo);
-    else if (geo.type === 'FeatureCollection' && Array.isArray(geo.features)){
-      geo.features.forEach(f => corridorPolys.push(f));
-    }
+    const pushOne = (feat) => {
+      const t = feat?.geometry?.type;
+      if (t === 'Polygon' || t === 'MultiPolygon') corridorPolys.push(feat);
+    };
+    if (geo.type === 'Feature') pushOne(geo);
+    else if (geo.type === 'FeatureCollection') (geo.features || []).forEach(pushOne);
   }
 
   function addCorridors(fc){
@@ -380,65 +335,113 @@ window.addEventListener('DOMContentLoaded', () => {
         ? turf.buffer(f, 0.03, { units:'kilometers' })
         : f;
 
-      const layer = L.geoJSON(polyFeat, { style: POLY_STYLE }).addTo(areaLayer);
+      const normalized = (polyFeat.type === 'FeatureCollection')
+        ? polyFeat
+        : { type:'FeatureCollection', features:[polyFeat] };
 
-      const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || null;
+      L.geoJSON(normalized, { style: POLY_STYLE }).addTo(areaLayer);
+
+      const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || f.properties?.name || null;
+      // Bind a minimal popup (disabled link clicks)
+      const layer = L.geoJSON(normalized, { style: POLY_STYLE });
       layer.bindPopup(nm || 'Approach Area');
-      layer.on('popupopen', e=>{
-        const el = e.popup.getElement();
-        if (!el) return;
-        el.querySelectorAll('a').forEach(a=>a.addEventListener('click', ev=>ev.preventDefault()));
-      });
-      layer.on('click', () => {
-        if (nm && LOC[nm]) {
-          playLocationOnly(nm);
-        } else {
-          const c = turf.center(polyFeat)?.geometry?.coordinates;
-          if (Array.isArray(c)) {
-            const nearest = nearestCameraName(c[1], c[0]);
-            if (nearest) playLocationOnly(nearest);
-          }
-        }
-      });
+      layer.on('popupopen', e=>{ e.popup.getElement()?.querySelectorAll('a').forEach(a=>a.addEventListener('click', ev=>ev.preventDefault())); });
 
-      pushCorridorPolys(polyFeat);
+      pushCorridorPolys(normalized);
     });
   }
 
-  function addPoleMarkers(fc){
+  // Keep at most one corridor polygon per pole (prefers nearest by center-of-mass)
+  function filterCorridorsToPoles(corridorsFC, polesFC){
+    const polys = (corridorsFC.features || []).filter(f => {
+      const t = f.geometry?.type; return t === 'Polygon' || t === 'MultiPolygon';
+    });
+    const centers = polys.map((f, i) => ({ i, c: turf.centerOfMass(f) }));
+    const poles = (polesFC.features || []).filter(f => f.geometry?.type === 'Point');
+
+    const picked = new Set();
+    const selected = [];
+    const corridorForPole = new Map(); // name -> polygon feature
+
+    for (const pole of poles){
+      const name = pole.properties?.name || `pole_${selected.length+1}`;
+      const pt = turf.point(pole.geometry.coordinates);
+      const ranked = centers
+        .map(({i, c}) => ({ i, d: turf.distance(pt, c, { units:'kilometers' }) }))
+        .sort((a,b)=>a.d-b.d);
+
+      const choice = ranked.find(r => !picked.has(r.i))?.i ?? ranked[0]?.i;
+      if (choice != null){
+        picked.add(choice);
+        const poly = polys[choice];
+        selected.push(poly);
+        corridorForPole.set(name, poly);
+      }
+    }
+
+    return { fc: { type:'FeatureCollection', features: selected }, corridorForPole };
+  }
+
+  // Snap a Point (lng,lat) to the boundary line of a polygon (roadside look)
+  function snapToPolygonEdge(lng, lat, polyFeature){
+    try{
+      const pt = turf.point([lng, lat]);
+      const line = turf.polygonToLine(polyFeature); // polygon -> MultiLineString/LineString
+      const snapped = turf.nearestPointOnLine(line, pt, { units:'kilometers' });
+      const [slng, slat] = snapped.geometry.coordinates;
+      return [slat, slng]; // Leaflet order
+    }catch{
+      return [lat, lng]; // fallback: original
+    }
+  }
+
+  function addPoleMarkers(fc, corridorForPole){
     const camIcon = L.icon({
       iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>'),
       iconSize:[28,28], iconAnchor:[14,14]
     });
 
     const feats = (fc.features||[]).filter(f=>{
-      try{ const [x,y]=f.geometry.coordinates; return x>-124&&x<-121&&y>37&&y<38; }catch{return false}
+      const g = f.geometry || {};
+      if (g.type !== 'Point' || !Array.isArray(g.coordinates)) return false;
+      const [x,y]=g.coordinates; return x>-124&&x<-121&&y>37&&y<38;
     });
 
-    // de-dupe ~1m
-    const seen=new Set(), clean=[];
-    for(const f of feats){
-      const [x,y]=f.geometry.coordinates;
-      const k=`${(+x).toFixed(5)},${(+y).toFixed(5)}`;
-      if(!seen.has(k)){ seen.add(k); clean.push(f); }
-    }
+    const ul = document.querySelector('.camera-list');
+    ul && (ul.innerHTML = '');
 
     const latlngs=[];
-    clean.forEach(f=>{
+    for (const f of feats){
       const [lng,lat]=f.geometry.coordinates;
-      const name = nearestCameraName(lat, lng);
-      const m = L.marker([lat,lng],{icon:camIcon}).addTo(poleLayer);
-      const div = document.createElement('div'); div.textContent = name || 'Speed Camera';
+      const name = f.properties?.name || 'Speed Camera';
+
+      const poly = corridorForPole?.get(name);
+      const [snapLat, snapLng] = poly ? snapToPolygonEdge(lng, lat, poly) : [lat, lng];
+
+      const m = L.marker([snapLat, snapLng],{icon:camIcon}).addTo(poleLayer);
+      const div = document.createElement('div'); div.textContent = name;
       m.bindPopup(div);
-      m.on('click', ()=>{ if(name) playLocationOnly(name); });
-      latlngs.push([lat,lng]);
-    });
+      m.on('click', ()=>{ if (LOC[name]) playLocationOnly(name); });
+
+      latlngs.push([snapLat, snapLng]);
+
+      if (ul){
+        const li=document.createElement('li');
+        li.className='list-group-item';
+        li.textContent=name;
+        li.setAttribute('role','option');
+        li.setAttribute('tabindex','0');
+        li.addEventListener('click',()=>{ map.setView([snapLat,snapLng],15); if(LOC[name]) playLocationOnly(name); });
+        li.addEventListener('keydown', (e)=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); li.click(); }});
+        ul.appendChild(li);
+      }
+    }
 
     if(latlngs.length){ map.fitBounds(L.latLngBounds(latlngs).pad(0.2)); }
   }
 
   /* -------- Speed sign (explicit-only) -------- */
-  const SPEED_LIMITS = {}; // will be filled by loader if provided
+  const SPEED_LIMITS = {}; // filled by loader if provided
   function showSpeedSign(limit){
     const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
     if (!box || !val) return;
@@ -448,8 +451,17 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-  // gates / timing
-  const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 60, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
+  // Gates / timing (dynamic lead based on speed, clamped)
+  const EXIT_M  = 300;
+  const MAX_ACC_M = 75;
+  const MIN_SPEED_MPS = 2.2;
+  const COOLDOWN_MS = 45000;
+
+  function enterDistanceM(speedMps){
+    const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.3; // ~50 mph fallback
+    return Math.max(120, Math.min(320, Math.round(v * 9))); // target ~9s
+  }
+
   const insideNow = new Set(), lastAlertAt = new Map();
 
   function passesGates(coords){
@@ -471,6 +483,7 @@ window.addEventListener('DOMContentLoaded', () => {
   async function startGPS(){
     if(!('geolocation' in navigator)) return;
     if(window.__watchId!=null) return;
+    await dataReady; // ensure corridors/poles/speeds loaded
     if (!map.hasLayer(userMarker)) userMarker.addTo(map);
 
     window.__watchId = navigator.geolocation.watchPosition(async pos=>{
@@ -485,9 +498,8 @@ window.addEventListener('DOMContentLoaded', () => {
       const now=Date.now();
       for(const cam of cameras){
         const dM = distKm(latitude, longitude, cam.lat, cam.lon)*1000;
-        const nearPoint = dM <= ENTER_M;
-        const inCorridorForThisCam = inCorridor && (nearestName === cam.name);
-        const inZone = nearPoint || inCorridorForThisCam;
+        const nearPoint = dM <= enterDistanceM(pos.coords.speed);
+        const inZone = nearPoint || (inCorridor && (nearestName === cam.name));
 
         const wasIn = insideNow.has(cam.name);
 
@@ -528,7 +540,6 @@ window.addEventListener('DOMContentLoaded', () => {
     mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
     applyMode();
   });
-  applyMode();
 
   /* -------- Trial Nag -------- */
   const NAG_FIRST_MS  = 120000;
@@ -584,10 +595,10 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- Geofence alert chain -------- */
   async function playGeofenceAlert(name){
-    const f=LOC[name]; if(!f) return;
+    const f=LOC[name];
     try{
       if (mode !== 'mute') {
-        const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
+        const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, f?`${AUDIO_BASE}${f}`:null, `${AUDIO_BASE}${pick(TAGS)}` ].filter(Boolean);
         for (const url of seq){ await playNow(url); }
       }
     } finally {}
@@ -600,6 +611,8 @@ window.addEventListener('DOMContentLoaded', () => {
   function canonicalize(n){
     return String(n).toLowerCase()
       .replace(/\([^)]*\)/g,' ')
+      .replace(/[ ,]/g,' ')
+      .replace(/\bfrom\b|\bto\b/g,' ')
       .replace(/^\s*the\s+/,'')
       .replace(/\b(street|st|avenue|ave|boulevard|blvd|road|rd|drive|dr|way)\b/g,'')
       .replace(/-/g,' ')
@@ -618,25 +631,51 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- Start everything (with counts/debug) -------- */
   initMap();
+
+  let cameras = [];
+  let dataReadyResolve;
+  const dataReady = new Promise(res => (dataReadyResolve = res));
+
   (async ()=>{
     try{
-      const [corr, poles] = await Promise.all([
+      const [corrRaw, poles] = await Promise.all([
         fetchJSON(CORRIDORS_URL),
         fetchJSON(POLES_URL)
       ]);
-      addCorridors(corr);
-      addPoleMarkers(poles);
-      const corrCount = (corr.features||[]).length;
+
+      // Build cameras directly from poles so names/coords never drift.
+      cameras = (poles.features || [])
+        .filter(f => f.geometry?.type === 'Point')
+        .map(f => {
+          const [lon, lat] = f.geometry.coordinates;
+          return {
+            name: f.properties?.name || 'Speed Camera',
+            lat, lon,
+            direction: (f.properties?.direction || 'BOTH').toUpperCase(),
+            pole_id: f.properties?.pole_id
+          };
+        });
+
+      const { fc: corr33, corridorForPole } = filterCorridorsToPoles(corrRaw, poles);
+      addCorridors(corr33);
+      addPoleMarkers(poles, corridorForPole);
+
+      const corrCount = (corr33.features||[]).length;
       const poleCount = (poles.features||[]).length;
       showDebug(`Corridors: ${corrCount} • Poles: ${poleCount}`);
-    }catch(e){ /* per-file errors already displayed */ }
 
-    try{ await loadSpeedLimits(); }catch{}
+      await loadSpeedLimits(); // ensure SPEED_LIMITS ready before GPS
+      dataReadyResolve();
+    }catch(e){ dataReadyResolve(); }
 
+    // Preload audio a moment later
     setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 4); }, 300);
   })();
 
-  /* -------- Preloader -------- */
+  // Now that loaders are queued, enable warmup UI (after first click we'll await dataReady in startGPS)
+  function enableWarmup(){ warmBtn.removeAttribute('disabled'); }
+  enableWarmup();
+
   function buildAudioUrls(){
     const urls = [];
     for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
@@ -649,11 +688,14 @@ window.addEventListener('DOMContentLoaded', () => {
     const workers = Array.from({length:concurrency}, async ()=>{
       while(queue.length){
         const url = queue.shift();
-        try{ const a=new Audio(); a.preload='auto'; a.src=url; a.load(); await new Promise(r=>setTimeout(r,60)); }catch(e){}
+        try{ const a=new Audio(); a.preload='auto'; a.src=url; a.load(); await new Promise(r=>{ a.oncanplaythrough = ()=>r(); setTimeout(r,1200); }); }catch(e){}
       }
     });
     await Promise.all(workers);
   }
+
+  // Initialize UI state last
+  applyMode();
 });
 </script>
 </body>
