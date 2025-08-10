@@ -11,59 +11,45 @@
 <!-- Defer head scripts for faster first paint -->
 <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<!-- NEW: Turf for buffering lines into polygons -->
+<!-- Turf for buffer + helpers -->
 <script defer src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
 
 <!-- Preload nag VO so it’s ready when needed -->
 <link rel="preload" as="audio" href="images/audio/Ad1.mp3" type="audio/mpeg">
 
 <style>
-  :root{
-    --paid-offset-mobile: 220px;
-    --paid-offset-desktop: 330px;
-    --overlay-top: 10px;
-    --shell-max: 520px;
-  }
+  :root{ --paid-offset-mobile:220px; --paid-offset-desktop:330px; --overlay-top:10px; --shell-max:520px; }
+  html,body{height:100%}
+  body{ margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Arial; font-weight:600; display:flex; flex-direction:column; overflow-x:hidden;}
+  .page{flex:1 0 auto; position:relative;}
+  footer{flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center;}
 
-  html, body { height:100%; }
-  body{
-    margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Arial; font-weight:600;
-    display:flex; flex-direction:column; overflow-x:hidden;
-  }
-  .page { flex:1 0 auto; position:relative; }
-  footer { flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center; }
+  .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden;}
+  .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center;}
 
-  .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
-  .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
-
-  .overlay-layer{
-    position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none;
-    background:transparent; outline:0;
-  }
-  .overlay-layer img{ width:100%; height:auto; display:block; background:transparent; outline:0; box-shadow:none; filter:none; mix-blend-mode:normal; }
+  .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none;}
+  .overlay-layer img{ width:100%; height:auto; display:block;}
   #overlay-paid{ transform:translateY(-12px); }
 
-  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
+  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile);}
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
 
   .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
-
   .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
-  #warmup.btn-off   { background:#b02a37; border-color:#b02a37; color:#fff; }
-  #warmup.btn-on    { background:#198754; border-color:#198754; color:#fff; }
-  #warmup.btn-mute  { background:#b89b00; border-color:#b89b00; color:#111; }
+  #warmup.btn-off{ background:#b02a37; border-color:#b02a37; color:#fff;}
+  #warmup.btn-on{  background:#198754; border-color:#198754; color:#fff;}
+  #warmup.btn-mute{background:#b89b00; border-color:#b89b00; color:#111;}
 
-  #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
+  #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85);}
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
-
   @media (max-width:430px){
     #map{ height:52vh; }
     .camera-list{ max-height:180px; }
     .content-wrap{ margin-top:200px; }
   }
 
-  .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(2,107,244,.25); }
+  .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
 
   .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
   .speed-sign.show { opacity:1; transform:translateX(-50%) translateY(0); }
@@ -80,12 +66,14 @@
 </style>
 </head>
 <body>
+  <!-- Background video -->
   <div class="video-bg">
     <video id="bgvid" autoplay loop muted playsinline poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
       <source src="videos/background.mp4" type="video/mp4">
     </video>
   </div>
 
+  <!-- Overlay PNGs -->
   <div class="overlay-layer" id="overlay">
     <picture id="overlay-paid">
       <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
@@ -93,16 +81,20 @@
     </picture>
   </div>
 
+  <!-- Page -->
   <div class="page">
     <div class="content-wrap">
       <div class="app-shell">
+        <!-- Controls row -->
         <div class="d-flex gap-2 align-items-center mb-3">
           <a id="payCTA" class="btn btn-primary btn-match" href="#" role="button">Go Pro</a>
           <button id="warmup" class="btn btn-match btn-off" aria-pressed="false">Sound &amp; GPS: Off</button>
         </div>
 
+        <!-- Map -->
         <div id="map" class="mb-3" tabindex="-1"></div>
 
+        <!-- Camera List -->
         <div id="list" class="card mb-3">
           <div class="card-header">Camera Locations</div>
           <ul class="list-group camera-list"></ul>
@@ -111,6 +103,7 @@
     </div>
   </div>
 
+  <!-- SPEED LIMIT sign -->
   <div id="speedSign" class="speed-sign" aria-live="polite" hidden>
     <div class="sign">
       <div class="label">SPEED LIMIT</div>
@@ -119,6 +112,7 @@
     </div>
   </div>
 
+  <!-- Trial Nag -->
   <div id="nag" class="nag-backdrop">
     <div class="nag-wrap">
       <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt">
@@ -155,7 +149,7 @@ bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e
 function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
 addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
 
-/* ---------- Cameras (33) ---------- */
+/* ---------- SFMTA camera names (for list + voice) ---------- */
 const cameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -194,32 +188,19 @@ const cameras = [
 
 /* ---------- Leaflet map ---------- */
 let map, userMarker;
-const camLayer = L.layerGroup();
-const lineLayer = L.layerGroup();     // original lines (hidden by default)
-const areaLayer = L.layerGroup();     // NEW: buffered approach polygons (visible)
+const poleLayer = L.layerGroup();     // NEW: roadside pole markers (from allpoles.json)
+const areaLayer = L.layerGroup();     // buffered approach polygons
+// (Optional) const lineLayer = L.layerGroup(); // raw lines if you want
 
 function initMap(){
   map = L.map('map',{ zoomControl:true }).setView([37.7749,-122.4194],12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap' }).addTo(map);
 
-  camLayer.addTo(map);
+  poleLayer.addTo(map);
   areaLayer.addTo(map);
-  // lineLayer.addTo(map); // keep for debugging if you want to see raw lines
+  // lineLayer.addTo(map);
 
-  const camIcon = L.icon({
-    iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>'),
-    iconSize:[28,28], iconAnchor:[14,14]
-  });
-
-  // Markers + on-click voice (NEW)
-  cameras.forEach(c=>{
-    L.marker([c.lat,c.lon],{icon:camIcon})
-      .addTo(camLayer)
-      .bindPopup(c.name)
-      .on('click', ()=>playLocationOnly(c.name)); // NEW: speak when marker clicked
-  });
-
-  // Populate list (unchanged: on-click speaks + centers)
+  // Populate list (on click: center + speak)
   const ul = document.querySelector('.camera-list');
   if (ul){
     cameras.forEach(c=>{
@@ -236,7 +217,10 @@ function initMap(){
 }
 
 /* ---------- Audio unlock / play chain ---------- */
+const REPO = 'sf-speed-alerts';
+const BASE = location.pathname.startsWith('/' + REPO) ? ('/' + REPO) : '';
 const AUDIO_BASE = `${BASE}/images/audio/`;
+
 const AudioUnlock = (() => {
   let ctx = null, unlocked = false;
   async function unlock(){ if(unlocked) return true; try{ ctx = ctx || new (window.AudioContext||window.webkitAudioContext)(); await ctx.resume(); const b=ctx.createBuffer(1,1,ctx.sampleRate); const s=ctx.createBufferSource(); s.buffer=b; s.connect(ctx.destination); s.start(0); unlocked=true; }catch{} return unlocked; }
@@ -298,64 +282,39 @@ const LOC = {
 function pick(a){return a[Math.floor(Math.random()*a.length)]}
 function playLocationOnly(name){ const f=LOC[name]; if(f) playNow(`${AUDIO_BASE}${f}`); }
 
-let geofencePlaying = false;
-async function playGeofenceAlert(name){
-  const f=LOC[name]; if(!f) return;
-  geofencePlaying = true;
-  try{
-    const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
-    for (const url of seq){ await playNow(url); }
-  } finally { geofencePlaying = false; }
-  if(navigator.vibrate) navigator.vibrate([250,100,250]);
+/* ---------- Fetch helpers with cache-bust ---------- */
+function bust(url){ const sep = url.includes('?') ? '&' : '?'; return `${url}${sep}v=${Date.now()}`; }
+async function fetchJSON(url){
+  const r = await fetch(bust(url), { cache:'no-store' });
+  if (!r.ok) throw new Error(`Fetch failed ${url}: ${r.status}`);
+  return r.json();
 }
 
-/* ---------- SPEED LIMIT sign ---------- */
-const SPEED_LIMITS = {};
-function showSpeedSign(limit){
-  const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
-  if (!box || !val) return;
-  if (Number.isFinite(limit)){ val.textContent = String(limit); box.classList.remove('unknown'); }
-  else { val.textContent = '--'; box.classList.add('unknown'); }
-  box.hidden = false; box.classList.add('show');
-}
-function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
-
-/* ---------- ArcGIS corridors -> buffered polygons (NEW) ---------- */
+/* ---------- ArcGIS corridors -> buffered polygons ---------- */
 const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
-const BUFFER_METERS = 25;      // visual corridor width
+const BUFFER_METERS = 25;
 const POLY_STYLE = { color:'#1e88e5', weight:1.5, opacity:0.9, fillColor:'#1e88e5', fillOpacity:0.18 };
 
 async function addCorridors(){
   try{
     const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
-    const r = await fetch(url,{cache:'no-store'});
-    if(!r.ok) throw 0;
-    const fc = await r.json();
+    const fc = await fetchJSON(url);
 
     (fc.features||[]).forEach(f=>{
       const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || null;
       const sp = f.properties?.SPEEDLIMIT ?? f.properties?.POSTED ?? null;
       if(nm && Number.isFinite(+sp)) SPEED_LIMITS[String(nm)] = +sp;
 
-      // Render original lines if you want (kept hidden by default)
-      // if(f.geometry && (f.geometry.type==='LineString' || f.geometry.type==='MultiLineString')){
-      //   L.geoJSON(f, { style:{ color:'#00FFFF', weight:3, opacity:0.3 } }).addTo(lineLayer);
-      // }
-
-      // NEW: Buffer line into a polygon corridor
       if (f.geometry && (f.geometry.type==='LineString' || f.geometry.type==='MultiLineString')) {
         try {
           const buffered = turf.buffer(f, BUFFER_METERS, { units:'meters' });
           if (buffered && buffered.geometry) {
             const layer = L.geoJSON(buffered, { style: POLY_STYLE }).addTo(areaLayer);
-            // clickable: speak location; also show popup name
             layer.bindPopup(nm || 'Approach Area');
             layer.on('click', () => {
-              // Try exact name match first; if not, find best camera by nearest centroid
               if (nm && LOC[nm]) {
                 playLocationOnly(nm);
               } else {
-                // best-effort: speak nearest camera name to polygon centroid
                 const c = turf.center(buffered)?.geometry?.coordinates;
                 if (Array.isArray(c)) {
                   const nearest = nearestCameraName(c[1], c[0]);
@@ -370,7 +329,8 @@ async function addCorridors(){
   }catch(e){}
 }
 
-/* Helper to find nearest camera name for polygons that don’t exactly match list text */
+/* ---------- Load roadside poles for markers (from allpoles.json) ---------- */
+const POLES_URL = './allpoles.json';
 function nearestCameraName(lat, lon){
   let best=null, bestD=Infinity;
   for (const c of cameras){
@@ -380,7 +340,54 @@ function nearestCameraName(lat, lon){
   return best;
 }
 
-/* ---------- Geofencing (unchanged) ---------- */
+async function addPoleMarkers(){
+  const camIcon = L.icon({
+    iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>'),
+    iconSize:[28,28], iconAnchor:[14,14]
+  });
+
+  try{
+    const fc = await fetchJSON(POLES_URL);
+    const feats = (fc.features||[]).filter(f=>{
+      try{ const [x,y]=f.geometry.coordinates; return x>-124&&x<-121&&y>37&&y<38; }catch{return false}
+    });
+
+    // De-dupe ~1m
+    const seen=new Set(), clean=[];
+    for(const f of feats){
+      const [x,y]=f.geometry.coordinates;
+      const k=`${x.toFixed(5)},${y.toFixed(5)}`;
+      if(!seen.has(k)){ seen.add(k); clean.push(f); }
+    }
+
+    const latlngs=[];
+    clean.forEach(f=>{
+      const [lng,lat]=f.geometry.coordinates;
+      const name = nearestCameraName(lat, lng); // map pole to closest list name
+      const m = L.marker([lat,lng],{icon:camIcon}).addTo(poleLayer);
+      m.bindPopup(name || 'Speed Camera');
+      m.on('click', ()=>{ if(name) playLocationOnly(name); });
+      latlngs.push([lat,lng]);
+    });
+
+    if(latlngs.length){ map.fitBounds(L.latLngBounds(latlngs).pad(0.2)); }
+  }catch(e){
+    console.warn('Failed to load allpoles.json:', e);
+  }
+}
+
+/* ---------- SPEED LIMIT sign ---------- */
+const SPEED_LIMITS = {};
+function showSpeedSign(limit){
+  const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
+  if (!box || !val) return;
+  if (Number.isFinite(limit)){ val.textContent = String(limit); box.classList.remove('unknown'); }
+  else { val.textContent = '--'; box.classList.add('unknown'); }
+  box.hidden = false; box.classList.add('show');
+}
+function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
+
+/* ---------- Geofencing (unchanged for now) ---------- */
 const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 function toRad(d){return d*Math.PI/180}
@@ -389,8 +396,12 @@ function distKm(aLat,aLon,bLat,bLon){
   const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
 }
-function passesGates(coords){ const {accuracy,speed}=coords; if(accuracy && accuracy>MAX_ACC_M) return false; if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false; return true; }
-
+function passesGates(coords){
+  const {accuracy,speed}=coords;
+  if(accuracy && accuracy>MAX_ACC_M) return false;
+  if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
+  return true;
+}
 function startGPS(){
   if(!('geolocation' in navigator)) return;
   if(window.__watchId!=null) return;
@@ -447,7 +458,7 @@ warmBtn.addEventListener('click', async ()=>{
 });
 applyMode();
 
-/* ---------- Trial Nag (unchanged core) ---------- */
+/* ---------- Nag (unchanged core) ---------- */
 const NAG_FIRST_MS = 120000;
 const NAG_REPEAT_MS = 30*60*1000;
 const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
@@ -462,15 +473,18 @@ let nagPlaying = false;
 let nagBuffer = null;
 let nagBufferReady = false;
 
-function blockPage() { document.body.style.pointerEvents = 'none'; nagEl.style.pointerEvents = 'none'; }
-function unblockPage() { document.body.style.pointerEvents = ''; nagEl.style.pointerEvents = 'auto'; }
+function blockPage(){ document.body.style.pointerEvents = 'none'; nagEl.style.pointerEvents = 'none'; }
+function unblockPage(){ document.body.style.pointerEvents = ''; nagEl.style.pointerEvents = 'auto'; }
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
-async function waitForGeofenceIdle(timeoutMs=15000){ const start=Date.now(); while (geofencePlaying && (Date.now()-start)<timeoutMs){ await sleep(100); } }
+async function waitForGeofenceIdle(timeoutMs=15000){
+  const start = Date.now();
+  while (geofencePlaying && (Date.now()-start)<timeoutMs){ await sleep(100); }
+}
 
 async function ensureNagBuffer(){
   if (nagBufferReady) return nagBuffer;
   try{
-    const res = await fetch(NAG_AUDIO_URL, { cache:'force-cache' });
+    const res = await fetch(bust(NAG_AUDIO_URL), { cache:'force-cache' });
     const ab = await res.arrayBuffer();
     await AudioUnlock.unlock();
     const ctx = AudioUnlock.ctx;
@@ -587,7 +601,10 @@ async function preloadAudioList(urls, concurrency=4){
 /* ---------- Boot ---------- */
 (async function boot(){
   initMap();
-  addCorridors(); // pulls arcs, buffers to pretty polygons, adds click-to-speak
+  await Promise.all([
+    addCorridors(),
+    addPoleMarkers()  // << roadside markers from allpoles.json + click-to-speak
+  ]);
   ensureNagBuffer().catch(()=>{});
   setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 4); }, 300);
 })();
