@@ -38,7 +38,7 @@
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
   /* Move the PAID overlay image up by 12px (Safari-friendly) */
-  #ovPaidImg{ transform:translateY(var(--overlay-paid-offset)) !important; will-change:transform; }
+  #ovPaidImg{ transform:translateY(var(--overlay-paid-offset)); will-change:transform; }
 
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
@@ -79,16 +79,16 @@
 </style>
 </head>
 <body>
-  <div class="video-bg">
+  <div class="video-bg" aria-hidden="true">
     <video id="bgvid" autoplay loop muted playsinline preload="auto" crossorigin="anonymous" poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
       <source id="bgvidSrc" src="" type="video/mp4">
     </video>
   </div>
 
-  <div class="overlay-layer" id="overlay">
+  <div class="overlay-layer" id="overlay" aria-hidden="true">
     <picture id="overlay-paid">
       <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
-      <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)">
+      <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)" decoding="async" fetchpriority="low">
     </picture>
   </div>
 
@@ -96,7 +96,7 @@
     <div class="content-wrap">
       <div class="app-shell">
         <div class="d-flex gap-2 align-items-center mb-3">
-          <a id="payCTA" class="btn btn-primary btn-match" href="#" aria-label="Upgrade to Pro">Go Pro</a>
+          <a id="payCTA" class="btn btn-primary btn-match" href="#" aria-label="Upgrade to Pro" rel="noopener">Go Pro</a>
           <button id="warmup" class="btn btn-match btn-off" aria-pressed="false" aria-live="polite">Sound &amp; GPS: Off</button>
         </div>
 
@@ -120,7 +120,7 @@
 
   <div id="nag" class="nag-backdrop" role="dialog" aria-modal="true" aria-labelledby="nagCountdown" aria-hidden="true">
     <div class="nag-wrap">
-      <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt">
+      <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt" decoding="async">
       <div id="nagCountdown" class="nag-count">25</div>
     </div>
   </div>
@@ -133,7 +133,7 @@
 window.addEventListener('DOMContentLoaded', () => {
   try { history.scrollRestoration = 'manual'; } catch {}
   if (location.hash) { history.replaceState(null, '', location.pathname); }
-  window.addEventListener('load', () => { window.scrollTo(0, 0); if (document.activeElement) document.activeElement.blur(); });
+  window.addEventListener('load', () => { window.scrollTo(0, 0); if (document.activeElement) document.activeElement.blur(); }, { once:true });
 
   /* -------- BASE (works on GitHub Pages or root domain) -------- */
   const REPO = 'sf-speed-alerts';
@@ -160,6 +160,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const paidImg = document.getElementById('ovPaidImg');
   if (paidImg){
     paidImg.src = `${BASE}/images/Copyblockdesktop_paid.png`;
+    // force reflow once after load to honor CSS var transform (Safari)
     paidImg.addEventListener('load', () => { void paidImg.offsetHeight; paidImg.style.transform = `translateY(var(--overlay-paid-offset))`; }, { once:true });
   }
 
@@ -174,7 +175,9 @@ window.addEventListener('DOMContentLoaded', () => {
   };
   let rzT;
   const debouncedSizeBG = () => { clearTimeout(rzT); rzT = setTimeout(sizeBG, 100); };
-  addEventListener('resize', debouncedSizeBG); addEventListener('orientationchange', debouncedSizeBG); sizeBG();
+  addEventListener('resize', debouncedSizeBG, { passive:true });
+  addEventListener('orientationchange', debouncedSizeBG);
+  sizeBG();
 
   /* -------- Debug badge + fetch wrapper -------- */
   function showDebug(msg, isErr=false){
@@ -182,6 +185,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (!el){
       el = document.createElement('div');
       el.id = 'debugBadge';
+      el.setAttribute('role','status');
       el.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:9999;padding:8px 10px;border-radius:8px;background:#111;color:#fff;font:600 12px system-ui;opacity:.9';
       document.body.appendChild(el);
     }
@@ -235,7 +239,7 @@ window.addEventListener('DOMContentLoaded', () => {
       }catch{}
       return unlocked;
     }
-    window.addEventListener('pointerdown', () => unlock(), { once:true });
+    window.addEventListener('pointerdown', () => unlock(), { once:true, passive:true });
     return { unlock, get unlocked(){ return unlocked; }, get ctx(){ return ctx; } };
   })();
 
@@ -398,7 +402,15 @@ window.addEventListener('DOMContentLoaded', () => {
   function snapToPolygonEdge(lng, lat, polyFeature){
     try{
       const pt = turf.point([lng, lat]);
-      const line = turf.polygonToLine(polyFeature); // polygon -> MultiLineString/LineString
+      let line;
+      try {
+        line = turf.polygonToLine(polyFeature); // MultiLineString/LineString
+      } catch {
+        // Fallback: take outer ring
+        const coords = polyFeature?.geometry?.coordinates?.[0];
+        if (coords) line = turf.lineString(coords);
+      }
+      if (!line) return [lat, lng];
       const snapped = turf.nearestPointOnLine(line, pt, { units:'kilometers' });
       const [slng, slat] = snapped.geometry.coordinates;
       return [slat, slng]; // Leaflet order
