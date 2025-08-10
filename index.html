@@ -13,11 +13,10 @@
 <style>
   :root{
     --overlay-top: 10px;
-    --content-offset-m: 260px;   /* content below PNG (mobile) */
-    --content-offset-d: 330px;   /* content below PNG (desktop) */
-    --shell-max: 520px;          /* max width for app shell */
+    --content-offset-m: 260px;
+    --content-offset-d: 330px;
+    --shell-max: 520px;
   }
-
   html, body { height:100%; }
   body{
     margin:0; background:#0b0b0b; color:#fff; font-family:system-ui,-apple-system,Arial; font-weight:600;
@@ -26,37 +25,28 @@
   .page { flex:1 0 auto; position:relative; }
   footer { flex:0 0 auto; padding:14px 0 18px; text-align:center; }
 
-  /* Background video */
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* Paid overlay PNGs */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
-  /* App shell keeps content centered under logo */
   .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
-
-  /* Content under PNG */
   .content-wrap{ position:relative; padding:16px 12px 24px; z-index:1; margin-top:var(--content-offset-m); }
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--content-offset-d); } }
 
-  /* Buttons row (matched sizing) */
   .btn-row{ display:flex; gap:10px; align-items:center; }
   .btn-row .btn{ height:40px; line-height:40px; padding:0 14px; font-weight:700; }
 
-  /* Tri-state classes */
   .state-off   { background:#c62828!important; border-color:#c62828!important; color:#fff!important; }
   .state-on    { background:#2e7d32!important; border-color:#2e7d32!important; color:#fff!important; }
   .state-mute  { background:#f9a825!important; border-color:#f9a825!important; color:#111!important; }
 
-  /* Map/list sized for mobile-first, won’t exceed shell width */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
 
-  /* SPEED LIMIT sign */
-  .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
+  .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .25s, transform .25s; }
   .speed-sign.show { opacity:1; transform:translateX(-50%) translateY(0); }
   .speed-sign .sign{ background:#fff; color:#000; border:4px solid #000; border-radius:10px; width:min(46vw, 280px); padding:10px 14px 12px; box-shadow:0 10px 30px rgba(0,0,0,.35); }
   .speed-sign .label{ font-weight:800; letter-spacing:.06em; text-align:center; font-size:14px; margin-bottom:4px; }
@@ -64,7 +54,6 @@
   .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
   .speed-sign.unknown .capsule{ display:inline-block; }
 
-  /* Trial nag (top, centered) */
   .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:60; display:none; }
   .nag{ position:fixed; top:25px; left:50%; transform:translateX(-50%); width:min(92vw, var(--shell-max)); z-index:61; display:none; }
   .nag img{ width:100%; height:auto; display:block; }
@@ -122,7 +111,6 @@
   <div id="nag" class="nag">
     <img id="nagImg" src="images/Ad1.png" alt="Upgrade to Pro">
   </div>
-  <!-- Preload nag audio (override mute when shown) -->
   <audio id="adAudio" preload="auto">
     <source src="images/audio/Ad1.mp3" type="audio/mpeg">
   </audio>
@@ -133,10 +121,50 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* --- Helpers: hard fail guard so one error doesn’t hide everything --- */
+/* ---------- GitHub JSON sources ---------- */
+const GITHUB_POLES_URL = 'https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/data/poles.json';
+const GITHUB_CORRIDORS_URL = 'https://raw.githubusercontent.com/DustinY15/sf-speed-alerts/main/data/corridors.json';
+
+/* ---------- Audio Manager: unlock & queue (autoplay safe) ---------- */
+const AudioMgr = (() => {
+  let ctx = null;
+  let unlocked = false;
+  let queue = Promise.resolve();
+
+  async function unlock() {
+    if (unlocked) return true;
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      await ctx.resume();
+      const buf = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const src = ctx.createBufferSource();
+      src.buffer = buf; src.connect(ctx.destination); src.start(0);
+      unlocked = true;
+    } catch (e) {}
+    return unlocked;
+  }
+  function onFirstPointer(cb) {
+    const fn = async () => { await unlock(); cb && cb(); window.removeEventListener('pointerdown', fn, { once:true }); };
+    window.addEventListener('pointerdown', fn, { once:true });
+  }
+  function playUrl(url) {
+    queue = queue.then(() => new Promise((resolve, reject) => {
+      const a = new Audio(url);
+      a.preload = 'auto';
+      a.onended = resolve;
+      a.onerror = reject;
+      a.play().catch(reject);
+    })).catch(()=>{});
+    return queue;
+  }
+  return { unlock, onFirstPointer, playUrl, get unlocked(){ return unlocked; } };
+})();
+AudioMgr.onFirstPointer();
+
+/* --- Helpers --- */
 function safe(fn){ try{ fn(); }catch(e){ console.warn(e); } }
 
-/* ---------- Initial scroll behavior ---------- */
+/* ---------- Scroll reset ---------- */
 safe(()=>{ try { history.scrollRestoration = 'manual'; } catch {} });
 safe(()=>{ if (location.hash) { history.replaceState(null, '', location.pathname); } });
 safe(()=>{ window.addEventListener('load', () => { window.scrollTo(0, 0); }); });
@@ -149,7 +177,7 @@ safe(()=>{
   addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
 });
 
-/* ---------- 33 seed cameras (fallback) ---------- */
+/* ---------- Seed cameras (fallback) ---------- */
 const seedCameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
@@ -186,7 +214,7 @@ const seedCameras = [
   {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
 ];
 
-/* ---------- UI state: tri-state button ---------- */
+/* ---------- Tri-state Sound/GPS ---------- */
 const soundBtn = document.getElementById('soundBtn');
 let audioState = 'off'; // off -> on -> mute
 function applyAudioState(){
@@ -195,10 +223,12 @@ function applyAudioState(){
   if (audioState==='on'){  soundBtn.classList.add('state-on');  soundBtn.textContent='Sound & GPS: On';  soundBtn.setAttribute('aria-pressed','true'); }
   if (audioState==='mute'){soundBtn.classList.add('state-mute');soundBtn.textContent='Mute: GPS Only';  soundBtn.setAttribute('aria-pressed','true'); }
 }
-soundBtn.addEventListener('click', ()=>{
+soundBtn.addEventListener('click', async ()=>{
+  const prev = audioState;
   audioState = (audioState==='off') ? 'on' : (audioState==='on' ? 'mute' : 'off');
   applyAudioState();
   if (audioState!=='off' && !window.__watchId){ startGPS(); }
+  if (prev === 'off' && audioState !== 'off') { await AudioMgr.unlock(); }
 });
 applyAudioState();
 
@@ -208,7 +238,6 @@ function initMap(cameras){
   map = L.map('map', { zoomControl:true }).setView([37.7749,-122.4194], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
 
-  // Camera markers (red)
   const camIcon = L.divIcon({
     className: 'cam-dot',
     html: '<div style="width:14px;height:14px;border-radius:50%;background:#e53935;border:2px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.45)"></div>',
@@ -217,7 +246,6 @@ function initMap(cameras){
   camsLayer = L.layerGroup().addTo(map);
   cameras.forEach(c => L.marker([c.lat,c.lon], { icon: camIcon }).addTo(camsLayer).bindPopup(c.name));
 
-  // Populate list
   const ul = document.querySelector('.camera-list');
   ul.innerHTML = '';
   cameras.forEach(c=>{
@@ -226,15 +254,12 @@ function initMap(cameras){
     li.textContent=c.name;
     li.addEventListener('click',()=>{
       map.setView([c.lat,c.lon],15,{animate:true});
-      // (We can play location VO here later if desired)
+      playGeofenceAlert(); // VO on list click
     });
     ul.appendChild(li);
   });
 
-  // Don’t let map focus cause scroll jump
   document.getElementById('map').setAttribute('tabindex','-1');
-
-  // Pause follow on user interactions
   armMapDwell();
 }
 
@@ -248,38 +273,55 @@ function updateMe(lat, lon, acc=25){
   } else { meCircle.setLatLng([lat,lon]); meCircle.setRadius(acc); }
 }
 
-/* ---------- Audio chains (GPS alerts); prevent overlap ---------- */
+/* ---------- Audio chains + tiny beep ---------- */
 const AUDIO_BASE = 'images/audio/';
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
-  'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
-  'no_need_for_a_photo_finish.mp3','your_best_pose_is_slow.mp3','they_go_high_we_go_slow.mp3',
-  'keep_it_chill_avoid_the_bill.mp3','slow_is_the_new_fast.mp3','pace_yourself.mp3',
-  'less_gas_more_class.mp3','the_smart_money_is_on_slowing_down.mp3','avoid_the_money_shot.mp3',
-  'chill_now_thank_yourself_later.mp3','no_rush_no_fuss.mp3','safety_first_bitches.mp3',
-  'easy_does_it.mp3','save_the_drama_for_the_drivethru.mp3','your_brakes_called_they_are_ready_to_help.mp3',
-  'lets_keep_your_record_clean_ish.mp3','slow_jams_only.mp3','brake_it_till_you_make_it.mp3',
-  'slow_and_easy_hotshot.mp3','the_only_rush_is_in_your_head.mp3','drive_like_someone_is_watching.mp3',
-  'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
+  'brake_the_habit.mp3',
+  'this_picture_is_not_for_the_gram.mp3',   // repo name
+  'your_wallet_just_got_a_little_nervous.mp3',
+  'no_need_for_a_photo_finish.mp3',
+  'your_best_pose_is_slow.mp3',
+  'they_go_high_we_go_slow.mp3',
+  'keep_it_chill_avoid_the_bill.mp3',
+  'slow_is_the_new_fast.mp3',
+  'pace_yourself.mp3',
+  'less_gas_more_class.mp3',
+  'the_smart_money_is_on_slowing_down.mp3',
+  'avoid_the_money_shot.mp3',
+  'chill_now_thank_yourself_later.mp3',
+  'no_rush_no_fuss.mp3',
+  // 'safety_first_bitches.mp3',              // removed (not in repo)
+  'easy_does_it.mp3',
+  'save_the_drama_for_the_drivethru.mp3',
+  'your_brakes_called_they_are_ready_to_help.mp3',
+  'lets_keep_your_record_clean_ish.mp3',
+  'slow_jams_only.mp3',
+  'brake_it_till_you_make_it.mp3',
+  'slow_and_easy_hotshot.mp3',
+  'the_only_rush_is_in_your_head.mp3',
+  'drive_like_someone_is_watching.mp3',
+  'give_those_brakes_a_little_love.mp3',
+  'slow_is_the_flex.mp3',
+  'Your_future_self_says_thanks.mp3',       // case matches repo
   'brakes_are_a_good_good_friend.mp3'
 ];
+const BEEP_URL='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQwAAAAA//8AAP//AAD//wAA//8AAP//AAD//wAA';
+
 let __chainPlaying = false;
 function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
-function playChain(files){
-  if(!files.length || __chainPlaying) return;
-  if (audioState==='off') return; // GPS chains respect off
+async function playChain(files, { force=false } = {}) {
+  if (!files.length) return;
+  if (audioState === 'off' && !force) return;
+  await AudioMgr.unlock();
+  if (__chainPlaying) return;
   __chainPlaying = true;
-  const a = new Audio(AUDIO_BASE + files[0]);
-  a.play().catch(()=>{ __chainPlaying=false; });
-  a.onended = ()=>{
-    const rest = files.slice(1);
-    if (rest.length){ __chainPlaying=false; playChain(rest); }
-    else setTimeout(()=>{ __chainPlaying=false; }, 200);
-  };
+  try { for (const f of files) { await AudioMgr.playUrl(AUDIO_BASE + f); } }
+  finally { __chainPlaying = false; }
 }
 function playGeofenceAlert(){ playChain([pick(STEMS), pick(TAGS)]); }
 
-/* ---------- SPEED LIMIT sign (placeholder until we wire per-corridor speeds) ---------- */
+/* ---------- SPEED LIMIT sign (beep when Sound=ON) ---------- */
 const SPEED_LIMITS = {};
 let currentZone = null;
 function showSpeedSign(limit){
@@ -288,22 +330,19 @@ function showSpeedSign(limit){
   if (Number.isFinite(limit)){ val.textContent = String(limit); box.classList.remove('unknown'); }
   else { val.textContent = '--'; box.classList.add('unknown'); }
   box.hidden = false; box.classList.add('show');
+  if (audioState === 'on') { AudioMgr.unlock().then(()=>AudioMgr.playUrl(BEEP_URL)).catch(()=>{}); }
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* ---------- ArcGIS corridors → filter to our cameras/poles ---------- */
+/* ---------- ArcGIS fallback ---------- */
 const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
-const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
-const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
+const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor','name','NAME_STR'];
+const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED','speed','limit'];
 const CACHE_KEY = 'sf_ase_corridors_v3';
 let CORRIDOR_INDEX = new Map(); // name -> { line, buffer, speed, dir }
 
 function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
-function norm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
 function toRad(d){ return d*Math.PI/180; }
-function hav(m1){
-  // helper omitted
-}
 function nearAnyPoint([lng,lat], points, meters = 150){
   for (const [clng,clat] of points){
     const dLat = toRad(lat - clat), dLon = toRad(lng - clng);
@@ -313,7 +352,6 @@ function nearAnyPoint([lng,lat], points, meters = 150){
   }
   return false;
 }
-
 async function fetchLiveCorridors(){
   const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
   const r = await fetch(url, { cache:'no-store' });
@@ -323,9 +361,67 @@ async function fetchLiveCorridors(){
 function loadCache(){ try{ const s=localStorage.getItem(CACHE_KEY); return s?JSON.parse(s):null; }catch{ return null; } }
 function saveCache(fc){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(fc)); }catch{} }
 
-async function ensureCorridors(cameraPoints){
+/* ---------- GitHub JSON: robust fetch/parse ---------- */
+async function fetchCleanJson(url){
+  const res = await fetch(url, { cache:'no-store' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} @ ${url}`);
+  const text = await res.text();
+  const cleaned = text.replace(/\uFEFF/g,'').replace(/[“”]/g,'"').replace(/[‘’]/g,"'");
+  try{ return JSON.parse(cleaned); }
+  catch(e){ console.error('JSON parse error for', url, e, 'Head:', cleaned.slice(0,220)); throw e; }
+}
+
+/* ---------- Prefer local corridors from GitHub ---------- */
+async function ensureCorridorsFromLocal(cameraPoints){
+  let fc;
+  try{ fc = await fetchCleanJson(GITHUB_CORRIDORS_URL); }
+  catch(e){ console.warn('Local corridors failed; using ArcGIS fallback.', e); return false; }
+  if (!fc || !Array.isArray(fc.features)){ console.warn('Local corridors missing features.'); return false; }
+
+  CORRIDOR_INDEX.clear();
+  const filtered = [];
+  for (const feat of fc.features){
+    const props = feat.properties || {};
+    let geom = feat.geometry;
+    if (!geom) continue;
+
+    if (geom.type === 'MultiLineString'){
+      geom = { type:'LineString', coordinates: [...geom.coordinates].sort((a,b)=>b.length-a.length)[0] };
+    } else if (geom.type === 'Polygon'){
+      const ring = geom.coordinates && geom.coordinates[0]; if (ring) geom = { type:'LineString', coordinates: ring };
+    } else if (geom.type === 'MultiPolygon'){
+      const ring = geom.coordinates && geom.coordinates[0] && geom.coordinates[0][0]; if (ring) geom = { type:'LineString', coordinates: ring };
+    }
+    if (geom.type !== 'LineString') continue;
+
+    const spatialMatches = geom.coordinates.some(([lng,lat]) => nearAnyPoint([lng,lat], cameraPoints, 150));
+    if (!spatialMatches) continue;
+
+    const rawName = getProp(props, NAME_FIELDS) || props.id || props.ID || null;
+    const name = (rawName ? String(rawName) : `Corridor ${filtered.length+1}`).trim();
+
+    const speed = Number(getProp(props, SPEED_FIELDS));
+    const dir = props.Direction || props.DIRECTION || props.dir || null;
+
+    let buffered = null; try{ buffered = turf.buffer(geom, 20, { units:'meters' }); }catch{}
+    CORRIDOR_INDEX.set(name, { line: geom, buffer: buffered, speed: Number.isFinite(speed)?speed:null, dir });
+    if (Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
+    if (buffered){ filtered.push({ type:'Feature', geometry: buffered.geometry, properties: { name } }); }
+  }
+
+  if (map){
+    if (corridorLayer) corridorLayer.remove();
+    corridorLayer = L.geoJSON({ type:'FeatureCollection', features: filtered }, {
+      style: { color: null, weight: 0, fillColor:'#FFCC33', fillOpacity:0.28 }
+    }).addTo(map);
+  }
+  return true;
+}
+
+/* ---------- ArcGIS corridors (fallback) ---------- */
+async function ensureCorridorsFromArcGIS(cameraPoints){
   let fc = loadCache();
-  if(!fc){ try { fc = await fetchLiveCorridors(); saveCache(fc); } catch { return; } }
+  if(!fc){ try{ fc = await fetchLiveCorridors(); saveCache(fc); } catch { return false; } }
   else { fetchLiveCorridors().then(saveCache).catch(()=>{}); }
 
   CORRIDOR_INDEX.clear();
@@ -348,26 +444,22 @@ async function ensureCorridors(cameraPoints){
     if (!spatialMatches) continue;
 
     const speed = Number(getProp(props, SPEED_FIELDS));
-    // Build filled corridor polygon (buffer) with no stroke (looks clean at all zooms)
     let buffered = null; try{ buffered = turf.buffer(geom, 20, { units:'meters' }); }catch{}
     CORRIDOR_INDEX.set(name, { line: geom, buffer: buffered, speed: Number.isFinite(speed)?speed:null, dir: props.Direction || props.DIRECTION || null });
     if (Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
-
-    if (buffered){
-      filtered.push({ type:'Feature', geometry: buffered.geometry, properties: { name } });
-    }
+    if (buffered){ filtered.push({ type:'Feature', geometry: buffered.geometry, properties: { name } }); }
   }
 
-  // Draw polygons (gold fill, NO outline)
   if (map){
     if (corridorLayer) corridorLayer.remove();
     corridorLayer = L.geoJSON({ type:'FeatureCollection', features: filtered }, {
       style: { color: null, weight: 0, fillColor:'#FFCC33', fillOpacity:0.28 }
     }).addTo(map);
   }
+  return true;
 }
 
-/* ---------- Geofencing with buffer + bearing + dwell ---------- */
+/* ---------- Geofencing with buffer + dwell ---------- */
 const ENTER_M = 25, EXIT_M = 45, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 let lastUserInteract = 0;
@@ -379,19 +471,11 @@ function armMapDwell(){
     map.on(ev, ()=>{ lastUserInteract = Date.now(); });
   });
 }
-
 function passesGates(coords){
   const {accuracy,speed}=coords;
   if(accuracy && accuracy>MAX_ACC_M) return false;
   if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
   return true;
-}
-function headingMatches(headingDeg, dir){
-  if(!dir || typeof headingDeg!=='number') return true;
-  const mapDir={NB:0,N:0,EB:90,E:90,SB:180,S:180,WB:270,W:270};
-  const tgt = mapDir[String(dir).toUpperCase()] ?? null; if(tgt==null) return true;
-  const diff = Math.min(Math.abs(headingDeg-tgt), 360-Math.abs(headingDeg-tgt));
-  return diff <= 60;
 }
 function inCorridorBuffer(e, lngLat){
   if (!e || !e.buffer) return false;
@@ -401,34 +485,18 @@ function corridorDistanceM(e, lngLat){
   if (e && e.line) return turf.pointToLineDistance(turf.point(lngLat), e.line, { units:'meters' });
   return Infinity;
 }
-function headingAlignsWithLine(e, lngLat, userHeading){
-  if (!e || !e.line || typeof userHeading !== 'number') return true;
-  const pt = turf.point(lngLat);
-  const snapped = turf.nearestPointOnLine(e.line, pt);
-  const idx = snapped.properties.index;
-  const coords = e.line.coordinates;
-  const a = coords[Math.max(0, idx - 1)];
-  const b = coords[Math.min(coords.length - 1, idx + 1)];
-  if (!a || !b) return true;
-  const segBearing = turf.bearing(turf.point(a), turf.point(b));
-  const user = ((userHeading % 360) + 360) % 360;
-  const seg  = ((segBearing  % 360) + 360) % 360;
-  const diff = Math.min(Math.abs(user - seg), 360 - Math.abs(user - seg));
-  return diff <= 60;
-}
 
 function startGPS(){
   if(!('geolocation' in navigator)) return;
   if(window.__watchId!=null) return;
 
   window.__watchId = navigator.geolocation.watchPosition(async pos=>{
-    const {latitude,longitude,accuracy,speed,heading}=pos.coords;
+    const {latitude,longitude,accuracy,speed}=pos.coords;
     if(!passesGates(pos.coords)) return;
 
     const now=Date.now(), lngLat=[longitude,latitude];
     updateMe(latitude, longitude, accuracy || 25);
 
-    // gentle follow with dwell/lag
     if (map){
       const since = now - lastUserInteract;
       if (since > FOLLOW_DWELL_MS){
@@ -436,10 +504,7 @@ function startGPS(){
       }
     }
 
-    // Geofence (if corridors known)
     for (const [name, ent] of CORRIDOR_INDEX.entries()){
-      if (ent.dir && !headingMatches(heading, ent.dir)) continue;
-
       const inside = inCorridorBuffer(ent, lngLat);
       const dM = inside ? 0 : corridorDistanceM(ent, lngLat);
 
@@ -465,78 +530,98 @@ function startGPS(){
   { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
 }
 
-/* ---------- Trial nag (120s first; then every 30m). Audio overrides mute. ---------- */
+/* ---------- Trial nag: undismissable until audio ends ---------- */
 const nagBackdrop = document.getElementById('nagBackdrop');
 const nag = document.getElementById('nag');
 const nagImg = document.getElementById('nagImg');
 const adAudio = document.getElementById('adAudio');
+const goPro = document.getElementById('goPro');
 
-function showNag(){
-  nagBackdrop.style.display='block';
-  nag.style.display='block';
-  // Force-play even if muted/off (as requested)
-  adAudio.currentTime = 0;
-  adAudio.play().catch(()=>{ /* if iOS blocks, any tap will enable later */ });
-  // Auto-close after ~25s (your VO is 24s)
-  setTimeout(hideNag, 25000);
+function disablePageInteraction(){
+  document.body.style.overflow='hidden';
+  document.body.style.pointerEvents='none';
+  nag.style.pointerEvents='none';
+  nagImg.style.pointerEvents='none';
+  nagBackdrop.onclick = null;
+  nag.onclick = null;
+}
+function enablePageInteraction(){
+  document.body.style.overflow='';
+  document.body.style.pointerEvents='';
+  nag.style.pointerEvents='auto';
+  nagImg.style.pointerEvents='auto';
+  nagBackdrop.onclick = hideNag;
+  nag.onclick = null;
+  nagImg.onclick = () => { window.location.href = goPro.href; };
 }
 function hideNag(){
+  adAudio.onended = null;
+  try { adAudio.pause(); } catch {}
   nagBackdrop.style.display='none';
   nag.style.display='none';
-  adAudio.pause();
 }
-nagBackdrop.addEventListener('click', hideNag);
-nagImg.addEventListener('click', ()=>{ window.location.href = document.getElementById('goPro').href; });
+async function showNag(){
+  nagBackdrop.style.display='block';
+  nag.style.display='block';
+  disablePageInteraction();
 
+  await AudioMgr.unlock();
+  adAudio.currentTime = 0;
+  try { await adAudio.play(); }
+  catch {
+    const resume = async () => { try { await adAudio.play(); } catch {} window.removeEventListener('pointerdown', resume, { once:true }); };
+    window.addEventListener('pointerdown', resume, { once:true });
+  }
+
+  adAudio.onended = () => {
+    // after 24s, allow clicks (Buy + dismiss) and keep visible a bit
+    enablePageInteraction();
+    setTimeout(hideNag, 8000); // auto-hide after 8s grace
+  };
+}
 function scheduleNags(){
-  // First nag after 120s
-  setTimeout(()=>{ showNag(); }, 120000);
-  // Then every 30 minutes
-  setInterval(()=>{ showNag(); }, 30*60*1000);
+  const start = () => setTimeout(showNag, 120000); // first at 120s
+  if (AudioMgr.unlocked) start(); else AudioMgr.onFirstPointer(start);
+  setInterval(showNag, 30*60*1000); // every 30m
 }
 
-/* ---------- Prefer precise poles if provided ---------- */
-/* Expected file: images/data/poles.json
-   {
-     "type":"FeatureCollection",
-     "features":[
-       {"type":"Feature","properties":{"name":"Fulton Street from 42nd to 43rd Ave"},"geometry":{"type":"Point","coordinates":[-122.5015,37.7725]}},
-       ...
-     ]
-   }
-*/
+/* ---------- Poles from GitHub ---------- */
 async function loadPoles(){
   try{
-    const r = await fetch('images/data/poles.json', { cache:'no-store' });
-    if (!r.ok) throw 0;
-    const gj = await r.json();
+    const gj = await fetchCleanJson(GITHUB_POLES_URL);
     const cams = [];
-    for (const f of (gj.features||[])){
+    const feats = (gj && gj.type==='FeatureCollection') ? gj.features : (gj && gj.type==='Feature' ? [gj] : []);
+    for (const f of feats){
       if (!f.geometry || f.geometry.type!=='Point') continue;
       const [lng,lat] = f.geometry.coordinates || [];
       const name = (f.properties && f.properties.name) ? String(f.properties.name) : 'Speed Camera';
-      if (typeof lat==='number' && typeof lng==='number'){
-        cams.push({ name, lat, lon: lng });
-      }
+      if (typeof lat==='number' && typeof lng==='number'){ cams.push({ name, lat, lon: lng }); }
     }
     if (cams.length) return cams;
-  }catch(e){}
-  return null; // fallback to seed
+  }catch(e){ console.warn('Poles from GitHub failed, using seed set.', e); }
+  return null;
+}
+
+/* ---------- JSON fetch helper ---------- */
+async function fetchCleanJson(url){
+  const res = await fetch(url, { cache:'no-store' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} @ ${url}`);
+  const text = await res.text();
+  const cleaned = text.replace(/\uFEFF/g,'').replace(/[“”]/g,'"').replace(/[‘’]/g,"'");
+  try{ return JSON.parse(cleaned); }
+  catch(e){ console.error('JSON parse error for', url, e, 'Head:', cleaned.slice(0,220)); throw e; }
 }
 
 /* ---------- Boot ---------- */
 (async function boot(){
-  // Try to use precise poles; else seed
   const poles = await loadPoles();
   const cameras = poles || seedCameras;
-
   initMap(cameras);
 
-  // Build cameraPoints for corridor filter
   const camPoints = cameras.map(c=>[c.lon, c.lat]);
-  await ensureCorridors(camPoints);
+  const okLocal = await ensureCorridorsFromLocal(camPoints);
+  if (!okLocal){ await ensureCorridorsFromArcGIS(camPoints); }
 
-  // Schedule nags (audio preloaded; override mute)
   scheduleNags();
 })();
 </script>
