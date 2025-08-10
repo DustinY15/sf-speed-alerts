@@ -249,36 +249,72 @@ function initMap(){
 
 /* ---------- Unified Audio (no overlaps) ---------- */
 const AUDIO_BASE = `${BASE}/images/audio/`;
-let audioUnlocked = false;
-['pointerdown','touchstart','click'].forEach(ev => {
-  window.addEventListener(ev, () => {
-    if (!audioUnlocked) {
-      audioUnlocked = true;
-      try { const a = new Audio(); a.muted = true; a.play().catch(()=>{}); } catch {}
-    }
-  }, { passive: true });
-});
+
+// Robust unlock (iOS/Chrome safe)
+const AudioUnlock = (() => {
+  let ctx = null, unlocked = false;
+  async function unlock() {
+    if (unlocked) return true;
+    try {
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      await ctx.resume();
+      const b = ctx.createBuffer(1, 1, ctx.sampleRate);
+      const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0);
+      unlocked = true;
+    } catch {}
+    return unlocked;
+  }
+  function onFirstPointer() {
+    const fn = async () => { await unlock(); window.removeEventListener('pointerdown', fn, { once:true }); };
+    window.addEventListener('pointerdown', fn, { once:true });
+  }
+  onFirstPointer();
+  return { unlock, get unlocked(){ return unlocked; } };
+})();
 
 let player = new Audio();
-function playNow(url) {
+// Play a single file now; resolves when it ends (or on error)
+async function playNow(url) {
+  await AudioUnlock.unlock();
   try { player.pause(); } catch {}
-  player = new Audio(url);
-  // Allow ad VO to play even if muted state is set; we always attempt play.
-  player.play().catch(()=>{});
+  return new Promise((resolve) => {
+    player = new Audio(url);
+    player.onended = resolve;
+    player.onerror = resolve;
+    player.play().catch(()=>{ resolve(); });
+  });
 }
 
 /* ---------- Location audio + alert composition ---------- */
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
-  'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
-  'no_need_for_a_photo_finish.mp3','your_best_pose_is_slow.mp3','they_go_high_we_go_slow.mp3',
-  'keep_it_chill_avoid_the_bill.mp3','slow_is_the_new_fast.mp3','pace_yourself.mp3',
-  'less_gas_more_class.mp3','the_smart_money_is_on_slowing_down.mp3','avoid_the_money_shot.mp3',
-  'chill_now_thank_yourself_later.mp3','no_rush_no_fuss.mp3','safety_first_bitches.mp3',
-  'easy_does_it.mp3','save_the_drama_for_the_drivethru.mp3','your_brakes_called_they_are_ready_to_help.mp3',
-  'lets_keep_your_record_clean_ish.mp3','slow_jams_only.mp3','brake_it_till_you_make_it.mp3',
-  'slow_and_easy_hotshot.mp3','the_only_rush_is_in_your_head.mp3','drive_like_someone_is_watching.mp3',
-  'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
+  'brake_the_habit.mp3',
+  'this_picture_is_not_for_the_gram.mp3',      // repo name
+  'your_wallet_just_got_a_little_nervous.mp3',
+  'no_need_for_a_photo_finish.mp3',
+  'your_best_pose_is_slow.mp3',
+  'they_go_high_we_go_slow.mp3',
+  'keep_it_chill_avoid_the_bill.mp3',
+  'slow_is_the_new_fast.mp3',
+  'pace_yourself.mp3',
+  'less_gas_more_class.mp3',
+  'the_smart_money_is_on_slowing_down.mp3',
+  'avoid_the_money_shot.mp3',
+  'chill_now_thank_yourself_later.mp3',
+  'no_rush_no_fuss.mp3',
+  // 'safety_first_bitches.mp3',                // not in repo
+  'easy_does_it.mp3',
+  'save_the_drama_for_the_drivethru.mp3',
+  'your_brakes_called_they_are_ready_to_help.mp3',
+  'lets_keep_your_record_clean_ish.mp3',
+  'slow_jams_only.mp3',
+  'brake_it_till_you_make_it.mp3',
+  'slow_and_easy_hotshot.mp3',
+  'the_only_rush_is_in_your_head.mp3',
+  'drive_like_someone_is_watching.mp3',
+  'give_those_brakes_a_little_love.mp3',
+  'slow_is_the_flex.mp3',
+  'Your_future_self_says_thanks.mp3',          // case in repo
   'brakes_are_a_good_good_friend.mp3'
 ];
 const LOC = {
@@ -319,13 +355,10 @@ const LOC = {
 
 function pick(a){return a[Math.floor(Math.random()*a.length)]}
 function playLocationOnly(name){ const f=LOC[name]; if(f) playNow(`${AUDIO_BASE}${f}`); }
-function playGeofenceAlert(name){
+async function playGeofenceAlert(name){
   const f=LOC[name]; if(!f) return;
-  // play sequentially using the same player
   const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
-  let i = 0;
-  const step = ()=>{ if(i>=seq.length) return; const url = seq[i++]; player.onended = step; playNow(url); };
-  step();
+  for (const url of seq){ await playNow(url); }
   if(navigator.vibrate) navigator.vibrate([250,100,250]);
 }
 
@@ -428,16 +461,16 @@ function applyMode(){
   if(mode==='on'){  warmBtn.classList.add('btn-on');  warmBtn.textContent='Sound & GPS: On';  startGPS(); }
   if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only';   startGPS(); }
 }
-warmBtn.addEventListener('click', ()=>{
+warmBtn.addEventListener('click', async ()=>{
   mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
   applyMode();
+  if (mode !== 'off') { await AudioUnlock.unlock(); } // ensure audio unlock when enabling GPS modes
 });
 applyMode();
 
-/* ---------- Trial Nag (Ad1/Ad2, 120s then every 30m; 25s lock; audio forced) ---------- */
+/* ---------- Trial Nag (locked to VO; 120s then every 30m) ---------- */
 const NAG_FIRST_MS = 120000;      // 120 s first
 const NAG_REPEAT_MS = 30*60*1000; // 30 min repeat
-const NAG_LOCK_SEC  = 25;         // must listen 25s
 const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
 const NAG_AUDIO  = `${BASE}/images/audio/Ad1.mp3`;
 
@@ -445,25 +478,55 @@ const nagEl  = document.getElementById('nag');
 const nagImg = document.getElementById('nagImg');
 const nagCount = document.getElementById('nagCountdown');
 
-function showNag(){
-  // choose image, enlarge already via CSS; play audio immediately
+let nagPlaying = false;
+
+function blockPage() {
+  document.body.style.pointerEvents = 'none';
+  nagEl.style.pointerEvents = 'none';
+}
+function unblockPage() {
+  document.body.style.pointerEvents = '';
+  nagEl.style.pointerEvents = 'auto';
+}
+
+async function showNag(){
+  if (nagPlaying) return;
+  nagPlaying = true;
+
   nagImg.src = NAG_IMAGES[Math.floor(Math.random()*NAG_IMAGES.length)];
   nagEl.style.display = 'flex';
-  // force audio (independent of mute state)
-  playNow(NAG_AUDIO);
+  blockPage();
 
-  let left = NAG_LOCK_SEC;
+  // countdown fallback (25s); sync to VO duration when known
+  let left = 25;
   nagCount.textContent = left;
-  const t = setInterval(()=>{
-    left -= 1;
-    nagCount.textContent = left;
-    if(left<=0){
-      clearInterval(t);
-      // Allow dismissal by tap or auto-dismiss after a few sec
-      nagEl.addEventListener('click', ()=>{ window.open(STRIPE_URL, '_blank', 'noopener'); nagEl.style.display='none'; }, {once:true});
-      setTimeout(()=>{ if(nagEl.style.display==='flex'){ nagEl.style.display='none'; } }, 4000);
+  const timer = setInterval(()=>{ left = Math.max(0, left-1); nagCount.textContent = left; }, 1000);
+
+  await AudioUnlock.unlock();
+  const vo = new Audio(NAG_AUDIO);
+  vo.addEventListener('loadedmetadata', () => {
+    if (isFinite(vo.duration) && vo.duration > 1) {
+      left = Math.ceil(vo.duration);
+      nagCount.textContent = left;
     }
-  },1000);
+  });
+  const startVO = async () => { try { await vo.play(); } catch {} };
+  try { await startVO(); }
+  catch {
+    const resume = async () => { await startVO(); window.removeEventListener('pointerdown', resume, { once:true }); };
+    window.addEventListener('pointerdown', resume, { once:true });
+  }
+
+  vo.onended = () => {
+    clearInterval(timer);
+    nagCount.textContent = '0';
+    // Now allow dismissal and Buy click
+    nagEl.onclick = () => { nagEl.style.display='none'; };
+    nagImg.onclick = () => { window.open(STRIPE_URL, '_blank', 'noopener'); nagEl.style.display='none'; };
+    unblockPage();
+    setTimeout(()=>{ if(nagEl.style.display==='flex'){ nagEl.style.display='none'; } }, 8000);
+    nagPlaying = false;
+  };
 }
 setTimeout(showNag, NAG_FIRST_MS);
 setInterval(showNag, NAG_REPEAT_MS);
