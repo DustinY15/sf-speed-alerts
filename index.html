@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>SF Speed Cameras – Alerts & Map</title>
+<title>SF Speed Cameras - Alerts & Map</title>
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
@@ -12,10 +12,12 @@
 
 <style>
   :root{
+    /* Content offsets under overlay PNGs (smaller = higher content) */
+    --paid-offset-mobile: 260px;
+    --paid-offset-desktop: 330px;
+
+    /* Overlay PNG distance from top */
     --overlay-top: 10px;
-    --content-offset-m: 260px;   /* content below PNG (mobile) */
-    --content-offset-d: 330px;   /* content below PNG (desktop) */
-    --shell-max: 520px;          /* max width for app shell */
   }
 
   html, body { height:100%; }
@@ -30,30 +32,29 @@
   .video-bg{ position:fixed; left:0; top:0; width:100vw; height:100dvh; z-index:-3; overflow:hidden; }
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
-  /* Paid overlay PNGs */
+  /* Overlay PNGs (float above but do NOT block clicks) */
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
 
-  /* App shell keeps content centered under logo */
-  .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
-
   /* Content under PNG */
-  .content-wrap{ position:relative; padding:16px 12px 24px; z-index:1; margin-top:var(--content-offset-m); }
-  @media (min-width:1200px){ .content-wrap{ margin-top:var(--content-offset-d); } }
+  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; }
+  .content-wrap{ margin-top:var(--paid-offset-mobile); }
+  @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
 
-  /* Buttons row (matched sizing) */
-  .btn-row{ display:flex; gap:10px; align-items:center; }
-  .btn-row .btn{ height:40px; line-height:40px; padding:0 14px; font-weight:700; }
+  /* Buttons */
+  .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
+  /* Sound+GPS tri-state */
+  #warmup.btn-off   { background:#b02a37; border-color:#b02a37; color:#fff; } /* red */
+  #warmup.btn-on    { background:#198754; border-color:#198754; color:#fff; } /* green */
+  #warmup.btn-mute  { background:#b89b00; border-color:#b89b00; color:#111; } /* yellow */
 
-  /* Tri-state classes */
-  .state-off   { background:#c62828!important; border-color:#c62828!important; color:#fff!important; }
-  .state-on    { background:#2e7d32!important; border-color:#2e7d32!important; color:#fff!important; }
-  .state-mute  { background:#f9a825!important; border-color:#f9a825!important; color:#111!important; }
-
-  /* Map/list sized for mobile-first, won’t exceed shell width */
+  /* Map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
   @media (max-width:1200px){ #map{ height:50vh; } }
   .camera-list{ max-height:200px; overflow-y:auto; }
+
+  /* User dot */
+  .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
 
   /* SPEED LIMIT sign */
   .speed-sign { position:fixed; left:50%; top:12px; transform:translateX(-50%) translateY(-20px); z-index:50; pointer-events:none; opacity:0; transition:opacity .2s, transform .25s; }
@@ -64,10 +65,11 @@
   .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
   .speed-sign.unknown .capsule{ display:inline-block; }
 
-  /* Trial nag (top, centered) */
-  .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:60; display:none; }
-  .nag{ position:fixed; top:25px; left:50%; transform:translateX(-50%); width:min(92vw, var(--shell-max)); z-index:61; display:none; }
-  .nag img{ width:100%; height:auto; display:block; }
+  /* Trial nag (20% larger, centered, click → Stripe) */
+  .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:60; }
+  .nag-wrap{ position:relative; transform:translateY(25px); } /* lower by ~25px */
+  .nag-img{ max-width:min(90vw, 540px); border-radius:14px; box-shadow:0 25px 60px rgba(0,0,0,.55); }
+  .nag-count{ position:absolute; bottom:10px; right:14px; background:rgba(0,0,0,.6); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800; }
 </style>
 </head>
 <body>
@@ -78,32 +80,36 @@
     </video>
   </div>
 
-  <!-- Always-paid overlay art -->
+  <!-- Overlay PNGs -->
   <div class="overlay-layer" id="overlay">
-    <picture id="overlay-paid">
-      <source media="(max-width: 1200px)" srcset="images/Copyblockmobile_paid.png">
-      <img src="images/Copyblockdesktop_paid.png" alt="SF Speed Cameras">
+    <!-- UNPAID art (we show the “free” hero copy art as the header art for trial) -->
+    <picture id="overlay-free">
+      <source id="ovFreeSrcM" media="(max-width: 1200px)" srcset="">
+      <img id="ovFreeImg" src="" alt="SF Speed Cameras">
+    </picture>
+    <!-- PAID art (logo-only art; kept for future variants) -->
+    <picture id="overlay-paid" style="display:none;">
+      <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
+      <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)">
     </picture>
   </div>
 
   <!-- Page -->
   <div class="page">
     <div class="content-wrap">
-      <div class="app-shell">
-        <!-- Buttons -->
-        <div class="btn-row mb-3">
-          <a id="goPro" href="https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01" class="btn btn-primary">Go Pro</a>
-          <button id="soundBtn" class="btn state-off" type="button" aria-pressed="false">Sound &amp; GPS: Off</button>
-        </div>
+      <!-- Controls row -->
+      <div class="d-flex gap-2 align-items-center mb-3">
+        <a id="payCTA" class="btn btn-primary btn-match" href="#" role="button">Go Pro</a>
+        <button id="warmup" class="btn btn-match btn-off" aria-pressed="false">Sound &amp; GPS: Off</button>
+      </div>
 
-        <!-- Map -->
-        <div id="map" class="mb-3" tabindex="-1"></div>
+      <!-- Map -->
+      <div id="map" class="mb-3" tabindex="-1"></div>
 
-        <!-- Camera list -->
-        <div id="list" class="card mb-3">
-          <div class="card-header">Camera Locations</div>
-          <ul class="list-group camera-list"></ul>
-        </div>
+      <!-- Camera List -->
+      <div id="list" class="card mb-3">
+        <div class="card-header">Camera Locations</div>
+        <ul class="list-group camera-list"></ul>
       </div>
     </div>
   </div>
@@ -117,15 +123,13 @@
     </div>
   </div>
 
-  <!-- Trial nag popup -->
-  <div id="nagBackdrop" class="nag-backdrop"></div>
-  <div id="nag" class="nag">
-    <img id="nagImg" src="images/Ad1.png" alt="Upgrade to Pro">
+  <!-- Trial Nag -->
+  <div id="nag" class="nag-backdrop">
+    <div class="nag-wrap">
+      <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt">
+      <div id="nagCountdown" class="nag-count">25</div>
+    </div>
   </div>
-  <!-- Preload nag audio (override mute when shown) -->
-  <audio id="adAudio" preload="auto">
-    <source src="images/audio/Ad1.mp3" type="audio/mpeg">
-  </audio>
 
   <footer>
     <small>&copy; 2025 SF Speed Cameras • <a href="#" class="text-white-50">Privacy</a> • <a href="#" class="text-white-50">Contact</a></small>
@@ -133,24 +137,39 @@
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-/* --- Helpers: hard fail guard so one error doesn’t hide everything --- */
-function safe(fn){ try{ fn(); }catch(e){ console.warn(e); } }
-
-/* ---------- Initial scroll behavior ---------- */
-safe(()=>{ try { history.scrollRestoration = 'manual'; } catch {} });
-safe(()=>{ if (location.hash) { history.replaceState(null, '', location.pathname); } });
-safe(()=>{ window.addEventListener('load', () => { window.scrollTo(0, 0); }); });
-
-/* ---------- Video loop height fix ---------- */
-safe(()=>{
-  const bg = document.getElementById('bgvid');
-  bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
-  function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
-  addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
+/* ---------- STOP auto-jump/scroll ---------- */
+try { history.scrollRestoration = 'manual'; } catch {}
+if (location.hash) { history.replaceState(null, '', location.pathname); }
+window.addEventListener('load', () => {
+  window.scrollTo(0, 0);
+  if (document.activeElement) document.activeElement.blur();
 });
 
-/* ---------- 33 seed cameras (fallback) ---------- */
-const seedCameras = [
+/* ---------- Detect correct base path for GitHub Pages ---------- */
+const REPO = 'sf-speed-alerts';
+const BASE = location.pathname.startsWith('/' + REPO) ? ('/' + REPO) : '';
+
+/* ---------- Wire image sources to BASE (prevents 404s) ---------- */
+document.getElementById('ovFreeSrcM').srcset = `${BASE}/images/Copyblockmobile.png`;
+document.getElementById('ovFreeImg').src     = `${BASE}/images/Copyblockdesktop.png`;
+document.getElementById('ovPaidSrcM').srcset = `${BASE}/images/Copyblockmobile_paid.png`;
+document.getElementById('ovPaidImg').src     = `${BASE}/images/Copyblockdesktop_paid.png`;
+
+/* ---------- Stripe link (open in new tab for reliability) ---------- */
+const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
+document.getElementById('payCTA').addEventListener('click', (e)=>{
+  e.preventDefault();
+  window.open(STRIPE_URL, '_blank', 'noopener');
+});
+
+/* ---------- Video loop height fix ---------- */
+const bg = document.getElementById('bgvid');
+bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
+function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
+window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
+
+/* ---------- Cameras (33) ---------- */
+const cameras = [
   {name:"Fulton Street from 42nd to 43rd Ave",lat:37.7725,lon:-122.5015},
   {name:"Lincoln Way from 27th to 28th Ave",lat:37.7658,lon:-122.4860},
   {name:"Geary Blvd from 7th to 8th Ave",lat:37.7805,lon:-122.4660},
@@ -186,70 +205,69 @@ const seedCameras = [
   {name:"Sloat Blvd from 41st Ave to Skyline Blvd",lat:37.7355,lon:-122.4980}
 ];
 
-/* ---------- UI state: tri-state button ---------- */
-const soundBtn = document.getElementById('soundBtn');
-let audioState = 'off'; // off -> on -> mute
-function applyAudioState(){
-  soundBtn.classList.remove('state-off','state-on','state-mute');
-  if (audioState==='off'){ soundBtn.classList.add('state-off'); soundBtn.textContent='Sound & GPS: Off'; soundBtn.setAttribute('aria-pressed','false'); }
-  if (audioState==='on'){  soundBtn.classList.add('state-on');  soundBtn.textContent='Sound & GPS: On';  soundBtn.setAttribute('aria-pressed','true'); }
-  if (audioState==='mute'){soundBtn.classList.add('state-mute');soundBtn.textContent='Mute: GPS Only';  soundBtn.setAttribute('aria-pressed','true'); }
-}
-soundBtn.addEventListener('click', ()=>{
-  audioState = (audioState==='off') ? 'on' : (audioState==='on' ? 'mute' : 'off');
-  applyAudioState();
-  if (audioState!=='off' && !window.__watchId){ startGPS(); }
-});
-applyAudioState();
+/* ---------- Leaflet map ---------- */
+let map, userMarker;
+const camLayer = L.layerGroup();
+const lineLayer = L.layerGroup();
 
-/* ---------- Map + list ---------- */
-let map, meMarker, meCircle, corridorLayer, camsLayer;
-function initMap(cameras){
-  map = L.map('map', { zoomControl:true }).setView([37.7749,-122.4194], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(map);
+function initMap(){
+  map = L.map('map',{ zoomControl:true }).setView([37.7749,-122.4194],12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap'
+  }).addTo(map);
 
-  // Camera markers (red)
-  const camIcon = L.divIcon({
-    className: 'cam-dot',
-    html: '<div style="width:14px;height:14px;border-radius:50%;background:#e53935;border:2px solid #fff;box-shadow:0 0 6px rgba(0,0,0,.45)"></div>',
-    iconSize: [14,14], iconAnchor: [7,7]
+  camLayer.addTo(map);
+  lineLayer.addTo(map);
+
+  // camera markers
+  const camIcon = L.icon({
+    iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>`
+    ),
+    iconSize:[28,28], iconAnchor:[14,14]
   });
-  camsLayer = L.layerGroup().addTo(map);
-  cameras.forEach(c => L.marker([c.lat,c.lon], { icon: camIcon }).addTo(camsLayer).bindPopup(c.name));
-
-  // Populate list
-  const ul = document.querySelector('.camera-list');
-  ul.innerHTML = '';
   cameras.forEach(c=>{
-    const li=document.createElement('li');
-    li.className='list-group-item';
-    li.textContent=c.name;
-    li.addEventListener('click',()=>{
-      map.setView([c.lat,c.lon],15,{animate:true});
-      // (We can play location VO here later if desired)
-    });
-    ul.appendChild(li);
+    L.marker([c.lat,c.lon],{icon:camIcon}).addTo(camLayer).bindPopup(c.name);
   });
 
-  // Don’t let map focus cause scroll jump
-  document.getElementById('map').setAttribute('tabindex','-1');
+  // list
+  const ul = document.querySelector('.camera-list');
+  if (ul){
+    cameras.forEach(c=>{
+      const li=document.createElement('li');
+      li.className='list-group-item';
+      li.textContent=c.name;
+      li.addEventListener('click',()=>{ map.setView([c.lat,c.lon],15); playLocationOnly(c.name); });
+      ul.appendChild(li);
+    });
+  }
 
-  // Pause follow on user interactions
-  armMapDwell();
+  // nice user locator
+  const dot = L.divIcon({ className:'loc-dot' });
+  userMarker = L.marker([37.7749,-122.4194],{icon:dot});
 }
 
-/* ---------- Live location layers ---------- */
-function updateMe(lat, lon, acc=25){
-  if (!meMarker){
-    meMarker = L.circleMarker([lat,lon], { radius:6, color:'#1976d2', fillColor:'#42a5f5', fillOpacity:1, weight:2 }).addTo(map);
-  } else { meMarker.setLatLng([lat,lon]); }
-  if (!meCircle){
-    meCircle = L.circle([lat,lon], { radius: acc, color:'#42a5f5', fillColor:'#42a5f5', fillOpacity:0.15, weight:0 }).addTo(map);
-  } else { meCircle.setLatLng([lat,lon]); meCircle.setRadius(acc); }
+/* ---------- Unified Audio (no overlaps) ---------- */
+const AUDIO_BASE = `${BASE}/images/audio/`;
+let audioUnlocked = false;
+['pointerdown','touchstart','click'].forEach(ev => {
+  window.addEventListener(ev, () => {
+    if (!audioUnlocked) {
+      audioUnlocked = true;
+      try { const a = new Audio(); a.muted = true; a.play().catch(()=>{}); } catch {}
+    }
+  }, { passive: true });
+});
+
+let player = new Audio();
+function playNow(url) {
+  try { player.pause(); } catch {}
+  player = new Audio(url);
+  // Allow ad VO to play even if muted state is set; we always attempt play.
+  player.play().catch(()=>{});
 }
 
-/* ---------- Audio chains (GPS alerts); prevent overlap ---------- */
-const AUDIO_BASE = 'images/audio/';
+/* ---------- Location audio + alert composition ---------- */
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
   'brake_the_habit.mp3','this_pic_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
@@ -263,25 +281,56 @@ const TAGS = [
   'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
   'brakes_are_a_good_good_friend.mp3'
 ];
-let __chainPlaying = false;
-function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
-function playChain(files){
-  if(!files.length || __chainPlaying) return;
-  if (audioState==='off') return; // GPS chains respect off
-  __chainPlaying = true;
-  const a = new Audio(AUDIO_BASE + files[0]);
-  a.play().catch(()=>{ __chainPlaying=false; });
-  a.onended = ()=>{
-    const rest = files.slice(1);
-    if (rest.length){ __chainPlaying=false; playChain(rest); }
-    else setTimeout(()=>{ __chainPlaying=false; }, 200);
-  };
-}
-function playGeofenceAlert(){ playChain([pick(STEMS), pick(TAGS)]); }
+const LOC = {
+  "Fulton Street from 42nd to 43rd Ave":"fulton_street_from_42nd_to_43rd_ave.mp3",
+  "Lincoln Way from 27th to 28th Ave":"lincoln_way_from_27th_to_28th_ave.mp3",
+  "Geary Blvd from 7th to 8th Ave":"geary_blvd_from_7th_to_8th_ave.mp3",
+  "Fulton St from 2nd Ave to Arguello Blvd":"fulton_st_from_2nd_ave_to_arguello_blvd.mp3",
+  "Geary Blvd from Webster to Buchanan St":"geary_blvd_from_webster_to_buchanan_st.mp3",
+  "Turk St from Van Ness Ave to Polk St":"turk_st_from_van_ness_ave_to_polk_st.mp3",
+  "Bay St from Octavia to Gough St":"bay_st_from_octavia_to_gough_st.mp3",
+  "Franklin St from Union to Green St":"franklin_st_from_union_to_green_st.mp3",
+  "Columbus Ave from Lombard to Greenwich St":"columbus_ave_from_lombard_to_greenwich_st.mp3",
+  "Broadway from Powell to Stockton St":"broadway_from_powell_to_stockton_st.mp3",
+  "The Embarcadero from Green to Battery St":"the_embarcadero_from_green_to_battery_st.mp3",
+  "Mission St from 8th to 9th St":"mission_st_from_8th_to_9th_st.mp3",
+  "10th St from Harrison to Folsom St":"10th_st_from_harrison_to_folsom_st.mp3",
+  "9th St from Bryant to Harrison St":"9th_st_from_bryant_to_harrison_st.mp3",
+  "7th St from Harrison to Folsom St":"7th_st_from_harrison_to_folsom_st.mp3",
+  "Harrison St from 4th to 5th St":"harrison_st_from_4th_to_5th_st.mp3",
+  "Bryant St from 2nd to 3rd St":"bryant_st_from_2nd_to_3rd_st.mp3",
+  "King St (EB only) from 4th to 5th St":"king_st_eb_only_from_4th_to_5th_st.mp3",
+  "Market St from Danvers to Douglass St":"market_st_from_danvers_to_douglass_st.mp3",
+  "Guerrero St from 19th to 20th St":"guerrero_st_from_19th_to_20th_st.mp3",
+  "16th St from Bryant St to Potrero Ave":"16th_st_from_bryant_st_to_potrero_ave.mp3",
+  "San Jose Ave from 29th to 30th St":"san_jose_ave_from_29th_to_30th_st.mp3",
+  "Cesar Chavez St from Folsom to Harrison St":"cesar_chavez_st_from_folsom_to_harrison_st.mp3",
+  "Cesar Chavez St from Indiana to Tennessee St":"cesar_chavez_st_from_indiana_to_tennessee_st.mp3",
+  "3rd St (NB only) from Key to Jamestown Ave":"3rd_st_nb_only_from_key_to_jamestown_ave.mp3",
+  "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave":"bayshore_blvd_sb_only_from_101_off_ramp_to_tunnel_ave.mp3",
+  "Geneva Ave from Prague St to Brookdale Ave":"geneva_ave_from_prague_st_to_brookdale_ave.mp3",
+  "Mission St from Ottawa Ave to Allison St":"mission_st_from_ottawa_ave_to_allison_st.mp3",
+  "Alemany Blvd from Farragut to Naglee Ave":"alemany_blvd_from_farragut_to_naglee_ave.mp3",
+  "Ocean Ave from Frida Kahlo Way to Howth St":"ocean_ave_from_frida_kahlo_way_to_howth_st.mp3",
+  "San Jose Ave from Santa Ynez to Ocean Ave":"san_jose_ave_from_santa_ynez_to_ocean_ave.mp3",
+  "Monterey Blvd from Edna to Congo St":"monterey_blvd_from_edna_to_congo_st.mp3",
+  "Sloat Blvd from 41st Ave to Skyline Blvd":"sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
+};
 
-/* ---------- SPEED LIMIT sign (placeholder until we wire per-corridor speeds) ---------- */
-const SPEED_LIMITS = {};
-let currentZone = null;
+function pick(a){return a[Math.floor(Math.random()*a.length)]}
+function playLocationOnly(name){ const f=LOC[name]; if(f) playNow(`${AUDIO_BASE}${f}`); }
+function playGeofenceAlert(name){
+  const f=LOC[name]; if(!f) return;
+  // play sequentially using the same player
+  const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, `${AUDIO_BASE}${f}`, `${AUDIO_BASE}${pick(TAGS)}` ];
+  let i = 0;
+  const step = ()=>{ if(i>=seq.length) return; const url = seq[i++]; player.onended = step; playNow(url); };
+  step();
+  if(navigator.vibrate) navigator.vibrate([250,100,250]);
+}
+
+/* ---------- SPEED LIMIT sign (placeholder) ---------- */
+const SPEED_LIMITS = {}; // (populated if ArcGIS returns POSTED speeds)
 function showSpeedSign(limit){
   const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
   if (!box || !val) return;
@@ -291,253 +340,138 @@ function showSpeedSign(limit){
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* ---------- ArcGIS corridors → filter to our cameras/poles ---------- */
+/* ---------- ArcGIS corridor lines (best effort) ---------- */
 const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
-const NAME_FIELDS  = ['CORRIDOR','Name','NAME','Segment','SEGMENT','Corridor'];
-const SPEED_FIELDS = ['SPEEDLIMIT','SPEED_LIMIT','SpeedLimit','Speed_Limit','POSTED','POSTED_SPEED'];
-const CACHE_KEY = 'sf_ase_corridors_v3';
-let CORRIDOR_INDEX = new Map(); // name -> { line, buffer, speed, dir }
-
-function getProp(o,keys){ for(const k of keys){ if(o && o[k]!=null && o[k]!=='') return o[k]; } return null; }
-function norm(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }
-function toRad(d){ return d*Math.PI/180; }
-function hav(m1){
-  // helper omitted
-}
-function nearAnyPoint([lng,lat], points, meters = 150){
-  for (const [clng,clat] of points){
-    const dLat = toRad(lat - clat), dLon = toRad(lng - clng);
-    const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat))*Math.cos(toRad(clat))*Math.sin(dLon/2)**2;
-    const d = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    if (d <= meters) return true;
-  }
-  return false;
-}
-
-async function fetchLiveCorridors(){
-  const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
-  const r = await fetch(url, { cache:'no-store' });
-  if(!r.ok) throw new Error('ArcGIS down');
-  return await r.json();
-}
-function loadCache(){ try{ const s=localStorage.getItem(CACHE_KEY); return s?JSON.parse(s):null; }catch{ return null; } }
-function saveCache(fc){ try{ localStorage.setItem(CACHE_KEY, JSON.stringify(fc)); }catch{} }
-
-async function ensureCorridors(cameraPoints){
-  let fc = loadCache();
-  if(!fc){ try { fc = await fetchLiveCorridors(); saveCache(fc); } catch { return; } }
-  else { fetchLiveCorridors().then(saveCache).catch(()=>{}); }
-
-  CORRIDOR_INDEX.clear();
-  const filtered = [];
-  for (const feat of (fc.features || [])){
-    const props = feat.properties || {};
-    let geom = feat.geometry;
-    if (!geom) continue;
-
-    if (geom.type === 'MultiLineString'){
-      geom = { type:'LineString', coordinates: [...geom.coordinates].sort((a,b)=>b.length-a.length)[0] };
-    }
-    if (geom.type !== 'LineString') continue;
-
-    const rawName = getProp(props, NAME_FIELDS);
-    const name = rawName ? String(rawName).trim() : null;
-    if (!name) continue;
-
-    const spatialMatches = geom.coordinates.some(([lng,lat]) => nearAnyPoint([lng,lat], cameraPoints, 150));
-    if (!spatialMatches) continue;
-
-    const speed = Number(getProp(props, SPEED_FIELDS));
-    // Build filled corridor polygon (buffer) with no stroke (looks clean at all zooms)
-    let buffered = null; try{ buffered = turf.buffer(geom, 20, { units:'meters' }); }catch{}
-    CORRIDOR_INDEX.set(name, { line: geom, buffer: buffered, speed: Number.isFinite(speed)?speed:null, dir: props.Direction || props.DIRECTION || null });
-    if (Number.isFinite(speed)) SPEED_LIMITS[name] = speed;
-
-    if (buffered){
-      filtered.push({ type:'Feature', geometry: buffered.geometry, properties: { name } });
-    }
-  }
-
-  // Draw polygons (gold fill, NO outline)
-  if (map){
-    if (corridorLayer) corridorLayer.remove();
-    corridorLayer = L.geoJSON({ type:'FeatureCollection', features: filtered }, {
-      style: { color: null, weight: 0, fillColor:'#FFCC33', fillOpacity:0.28 }
-    }).addTo(map);
+async function addCorridors(){
+  try{
+    const url = `${ARCGIS_LAYER_URL}/query?where=1%3D1&outFields=*&outSR=4326&f=geojson`;
+    const r = await fetch(url,{cache:'no-store'});
+    if(!r.ok) throw 0;
+    const fc = await r.json();
+    const style = { color:'#00FFFF', weight:3, opacity:0.8 }; // cyan for visibility
+    (fc.features||[]).forEach(f=>{
+      if(f.geometry && (f.geometry.type==='LineString' || f.geometry.type==='MultiLineString')){
+        L.geoJSON(f, { style }).addTo(lineLayer);
+      }
+      const sp = f.properties?.SPEEDLIMIT ?? f.properties?.POSTED ?? null;
+      const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || null;
+      if(nm && Number.isFinite(+sp)) SPEED_LIMITS[String(nm)] = +sp;
+    });
+  }catch(e){
+    // Silent: if the service is unreachable, we still have markers.
   }
 }
 
-/* ---------- Geofencing with buffer + bearing + dwell ---------- */
-const ENTER_M = 25, EXIT_M = 45, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
+/* ---------- Geofencing (simplified gates; same thresholds we proved out) ---------- */
+const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
-let lastUserInteract = 0;
-const FOLLOW_DWELL_MS = 15000;
-
-function armMapDwell(){
-  if (!map) return;
-  ['dragstart','zoomstart','mousedown','touchstart'].forEach(ev=>{
-    map.on(ev, ()=>{ lastUserInteract = Date.now(); });
-  });
+function toRad(d){return d*Math.PI/180}
+function distKm(aLat,aLon,bLat,bLon){
+  const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
 }
-
 function passesGates(coords){
   const {accuracy,speed}=coords;
   if(accuracy && accuracy>MAX_ACC_M) return false;
   if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
   return true;
 }
-function headingMatches(headingDeg, dir){
-  if(!dir || typeof headingDeg!=='number') return true;
-  const mapDir={NB:0,N:0,EB:90,E:90,SB:180,S:180,WB:270,W:270};
-  const tgt = mapDir[String(dir).toUpperCase()] ?? null; if(tgt==null) return true;
-  const diff = Math.min(Math.abs(headingDeg-tgt), 360-Math.abs(headingDeg-tgt));
-  return diff <= 60;
-}
-function inCorridorBuffer(e, lngLat){
-  if (!e || !e.buffer) return false;
-  return turf.booleanPointInPolygon(turf.point(lngLat), e.buffer);
-}
-function corridorDistanceM(e, lngLat){
-  if (e && e.line) return turf.pointToLineDistance(turf.point(lngLat), e.line, { units:'meters' });
-  return Infinity;
-}
-function headingAlignsWithLine(e, lngLat, userHeading){
-  if (!e || !e.line || typeof userHeading !== 'number') return true;
-  const pt = turf.point(lngLat);
-  const snapped = turf.nearestPointOnLine(e.line, pt);
-  const idx = snapped.properties.index;
-  const coords = e.line.coordinates;
-  const a = coords[Math.max(0, idx - 1)];
-  const b = coords[Math.min(coords.length - 1, idx + 1)];
-  if (!a || !b) return true;
-  const segBearing = turf.bearing(turf.point(a), turf.point(b));
-  const user = ((userHeading % 360) + 360) % 360;
-  const seg  = ((segBearing  % 360) + 360) % 360;
-  const diff = Math.min(Math.abs(user - seg), 360 - Math.abs(user - seg));
-  return diff <= 60;
-}
-
 function startGPS(){
   if(!('geolocation' in navigator)) return;
   if(window.__watchId!=null) return;
 
+  // show user dot layer
+  if (!map.hasLayer(userMarker)) userMarker.addTo(map);
+
   window.__watchId = navigator.geolocation.watchPosition(async pos=>{
-    const {latitude,longitude,accuracy,speed,heading}=pos.coords;
+    const {latitude,longitude} = pos.coords;
     if(!passesGates(pos.coords)) return;
 
-    const now=Date.now(), lngLat=[longitude,latitude];
-    updateMe(latitude, longitude, accuracy || 25);
+    // move user marker; keep map loosely centered when GPS is active
+    userMarker.setLatLng([latitude,longitude]);
 
-    // gentle follow with dwell/lag
-    if (map){
-      const since = now - lastUserInteract;
-      if (since > FOLLOW_DWELL_MS){
-        map.panTo([latitude, longitude], { animate:true, duration: 1.25 });
-      }
-    }
+    const now=Date.now();
+    for(const cam of cameras){
+      const dM = distKm(latitude, longitude, cam.lat, cam.lon)*1000;
+      const inZone = dM <= ENTER_M, wasIn = insideNow.has(cam.name);
 
-    // Geofence (if corridors known)
-    for (const [name, ent] of CORRIDOR_INDEX.entries()){
-      if (ent.dir && !headingMatches(heading, ent.dir)) continue;
-
-      const inside = inCorridorBuffer(ent, lngLat);
-      const dM = inside ? 0 : corridorDistanceM(ent, lngLat);
-
-      const wasIn = insideNow.has(name);
-      const entering = (!wasIn) && (inside || dM <= ENTER_M);
-      const exiting  = wasIn && (!inside && dM > EXIT_M);
-
-      if (entering) {
-        const last = lastAlertAt.get(name)||0;
-        if (now-last > COOLDOWN_MS) {
-          playGeofenceAlert();
-          showSpeedSign(ent.speed ?? null);
-          lastAlertAt.set(name, now);
+      if(!wasIn && inZone){
+        const last = lastAlertAt.get(cam.name)||0;
+        if(now-last>COOLDOWN_MS){
+          playGeofenceAlert(cam.name);
+          showSpeedSign(SPEED_LIMITS[cam.name]);
+          lastAlertAt.set(cam.name, now);
         }
-        insideNow.add(name);
-        currentZone = name;
-      } else if (exiting) {
-        insideNow.delete(name);
-        if (currentZone === name){ currentZone = null; hideSpeedSign(); }
+        insideNow.add(cam.name);
+      } else if (wasIn && dM > EXIT_M){
+        insideNow.delete(cam.name);
+        hideSpeedSign();
       }
     }
   }, err=>console.warn('Geolocation error', err),
   { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
 }
+function stopGPS(){
+  if (window.__watchId!=null){ navigator.geolocation.clearWatch(window.__watchId); window.__watchId=null; }
+  try{ map.removeLayer(userMarker); }catch{}
+  insideNow.clear();
+  hideSpeedSign();
+}
 
-/* ---------- Trial nag (120s first; then every 30m). Audio overrides mute. ---------- */
-const nagBackdrop = document.getElementById('nagBackdrop');
-const nag = document.getElementById('nag');
+/* ---------- Sound & GPS tri-state button ---------- */
+const warmBtn = document.getElementById('warmup');
+let mode = 'off'; // 'off' | 'on' | 'mute'
+function applyMode(){
+  warmBtn.classList.remove('btn-off','btn-on','btn-mute');
+  if(mode==='off'){ warmBtn.classList.add('btn-off'); warmBtn.textContent='Sound & GPS: Off'; stopGPS(); }
+  if(mode==='on'){  warmBtn.classList.add('btn-on');  warmBtn.textContent='Sound & GPS: On';  startGPS(); }
+  if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only';   startGPS(); }
+}
+warmBtn.addEventListener('click', ()=>{
+  mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
+  applyMode();
+});
+applyMode();
+
+/* ---------- Trial Nag (Ad1/Ad2, 120s then every 30m; 25s lock; audio forced) ---------- */
+const NAG_FIRST_MS = 120000;      // 120 s first
+const NAG_REPEAT_MS = 30*60*1000; // 30 min repeat
+const NAG_LOCK_SEC  = 25;         // must listen 25s
+const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
+const NAG_AUDIO  = `${BASE}/images/audio/Ad1.mp3`;
+
+const nagEl  = document.getElementById('nag');
 const nagImg = document.getElementById('nagImg');
-const adAudio = document.getElementById('adAudio');
+const nagCount = document.getElementById('nagCountdown');
 
 function showNag(){
-  nagBackdrop.style.display='block';
-  nag.style.display='block';
-  // Force-play even if muted/off (as requested)
-  adAudio.currentTime = 0;
-  adAudio.play().catch(()=>{ /* if iOS blocks, any tap will enable later */ });
-  // Auto-close after ~25s (your VO is 24s)
-  setTimeout(hideNag, 25000);
-}
-function hideNag(){
-  nagBackdrop.style.display='none';
-  nag.style.display='none';
-  adAudio.pause();
-}
-nagBackdrop.addEventListener('click', hideNag);
-nagImg.addEventListener('click', ()=>{ window.location.href = document.getElementById('goPro').href; });
+  // choose image, enlarge already via CSS; play audio immediately
+  nagImg.src = NAG_IMAGES[Math.floor(Math.random()*NAG_IMAGES.length)];
+  nagEl.style.display = 'flex';
+  // force audio (independent of mute state)
+  playNow(NAG_AUDIO);
 
-function scheduleNags(){
-  // First nag after 120s
-  setTimeout(()=>{ showNag(); }, 120000);
-  // Then every 30 minutes
-  setInterval(()=>{ showNag(); }, 30*60*1000);
-}
-
-/* ---------- Prefer precise poles if provided ---------- */
-/* Expected file: images/data/poles.json
-   {
-     "type":"FeatureCollection",
-     "features":[
-       {"type":"Feature","properties":{"name":"Fulton Street from 42nd to 43rd Ave"},"geometry":{"type":"Point","coordinates":[-122.5015,37.7725]}},
-       ...
-     ]
-   }
-*/
-async function loadPoles(){
-  try{
-    const r = await fetch('images/data/poles.json', { cache:'no-store' });
-    if (!r.ok) throw 0;
-    const gj = await r.json();
-    const cams = [];
-    for (const f of (gj.features||[])){
-      if (!f.geometry || f.geometry.type!=='Point') continue;
-      const [lng,lat] = f.geometry.coordinates || [];
-      const name = (f.properties && f.properties.name) ? String(f.properties.name) : 'Speed Camera';
-      if (typeof lat==='number' && typeof lng==='number'){
-        cams.push({ name, lat, lon: lng });
-      }
+  let left = NAG_LOCK_SEC;
+  nagCount.textContent = left;
+  const t = setInterval(()=>{
+    left -= 1;
+    nagCount.textContent = left;
+    if(left<=0){
+      clearInterval(t);
+      // Allow dismissal by tap or auto-dismiss after a few sec
+      nagEl.addEventListener('click', ()=>{ window.open(STRIPE_URL, '_blank', 'noopener'); nagEl.style.display='none'; }, {once:true});
+      setTimeout(()=>{ if(nagEl.style.display==='flex'){ nagEl.style.display='none'; } }, 4000);
     }
-    if (cams.length) return cams;
-  }catch(e){}
-  return null; // fallback to seed
+  },1000);
 }
+setTimeout(showNag, NAG_FIRST_MS);
+setInterval(showNag, NAG_REPEAT_MS);
 
 /* ---------- Boot ---------- */
 (async function boot(){
-  // Try to use precise poles; else seed
-  const poles = await loadPoles();
-  const cameras = poles || seedCameras;
-
-  initMap(cameras);
-
-  // Build cameraPoints for corridor filter
-  const camPoints = cameras.map(c=>[c.lon, c.lat]);
-  await ensureCorridors(camPoints);
-
-  // Schedule nags (audio preloaded; override mute)
-  scheduleNags();
+  initMap();
+  addCorridors(); // best-effort; app still works if it fails
 })();
 </script>
 </body>
