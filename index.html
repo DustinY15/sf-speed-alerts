@@ -7,23 +7,20 @@
 
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+
+<!-- Defer head scripts for faster first paint -->
+<script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
 <!-- Preload nag VO so it’s ready when needed -->
 <link rel="preload" as="audio" href="images/audio/Ad1.mp3" type="audio/mpeg">
 
 <style>
   :root{
-    /* Content offsets under overlay PNGs (smaller = higher content) */
-    --paid-offset-mobile: 220px;   /* tightened for phones (was 260px) */
+    --paid-offset-mobile: 220px;   /* tighter for phones */
     --paid-offset-desktop: 330px;
-
-    /* Overlay PNG distance from top */
     --overlay-top: 10px;
-
-    /* Max width for the app shell */
-    --shell-max: 520px;
+    --shell-max: 520px;            /* app shell width */
   }
 
   html, body { height:100%; }
@@ -39,12 +36,19 @@
   .video-bg video{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:center center; }
 
   /* Overlay PNGs (float above but do NOT block clicks) */
-  .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
-  .overlay-layer img{ width:100%; height:auto; display:block; }
+  .overlay-layer{
+    position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none;
+    background:transparent; outline:0;
+  }
+  .overlay-layer img{
+    width:100%; height:auto; display:block;
+    background:transparent; outline:0; box-shadow:none; filter:none; mix-blend-mode:normal;
+  }
+  /* Move paid art up ~12px visually */
+  #overlay-paid{ transform:translateY(-12px); }
 
   /* Content under PNG */
-  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; }
-  .content-wrap{ margin-top:var(--paid-offset-mobile); }
+  .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
   @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
 
   /* App shell: centers and caps width for controls/map/list */
@@ -52,10 +56,9 @@
 
   /* Buttons */
   .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
-  /* Sound+GPS tri-state */
-  #warmup.btn-off   { background:#b02a37; border-color:#b02a37; color:#fff; } /* red */
-  #warmup.btn-on    { background:#198754; border-color:#198754; color:#fff; } /* green */
-  #warmup.btn-mute  { background:#b89b00; border-color:#b89b00; color:#111; } /* yellow */
+  #warmup.btn-off   { background:#b02a37; border-color:#b02a37; color:#fff; }
+  #warmup.btn-on    { background:#198754; border-color:#198754; color:#fff; }
+  #warmup.btn-mute  { background:#b89b00; border-color:#b89b00; color:#111; }
 
   /* Map/list */
   #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
@@ -66,7 +69,7 @@
   @media (max-width:430px){
     #map{ height:52vh; }
     .camera-list{ max-height:180px; }
-    .content-wrap{ margin-top:200px; } /* sits nicer under hero on iPhone */
+    .content-wrap{ margin-top:200px; }
   }
 
   /* User dot */
@@ -81,9 +84,9 @@
   .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
   .speed-sign.unknown .capsule{ display:inline-block; }
 
-  /* Trial nag (20% larger, centered, click → Stripe) */
+  /* Trial nag */
   .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:60; }
-  .nag-wrap{ position:relative; transform:translateY(25px); } /* lower by ~25px */
+  .nag-wrap{ position:relative; transform:translateY(30px); } /* lowered ~5px more than before */
   .nag-img{ max-width:min(90vw, 540px); border-radius:14px; box-shadow:0 25px 60px rgba(0,0,0,.55); }
   .nag-count{ position:absolute; bottom:10px; right:14px; background:rgba(0,0,0,.6); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800; }
 </style>
@@ -98,7 +101,6 @@
 
   <!-- Overlay PNGs -->
   <div class="overlay-layer" id="overlay">
-    <!-- PAID art only -->
     <picture id="overlay-paid">
       <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
       <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)">
@@ -148,8 +150,10 @@
     <small>&copy; 2025 SF Speed Cameras • <a href="#" class="text-white-50">Privacy</a> • <a href="#" class="text-white-50">Contact</a></small>
   </footer>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+/* Run after DOM is parsed so deferred Leaflet/Bootstrap are ready */
+window.addEventListener('DOMContentLoaded', () => {
+
 /* ---------- STOP auto-jump/scroll ---------- */
 try { history.scrollRestoration = 'manual'; } catch {}
 if (location.hash) { history.replaceState(null, '', location.pathname); }
@@ -166,7 +170,7 @@ const BASE = location.pathname.startsWith('/' + REPO) ? ('/' + REPO) : '';
 document.getElementById('ovPaidSrcM').srcset = `${BASE}/images/Copyblockmobile_paid.png`;
 document.getElementById('ovPaidImg').src     = `${BASE}/images/Copyblockdesktop_paid.png`;
 
-/* ---------- Stripe link (open in new tab for reliability) ---------- */
+/* ---------- Stripe link ---------- */
 const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
 document.getElementById('payCTA').addEventListener('click', (e)=>{
   e.preventDefault();
@@ -177,7 +181,7 @@ document.getElementById('payCTA').addEventListener('click', (e)=>{
 const bg = document.getElementById('bgvid');
 bg?.addEventListener('ended', ()=>{ try{ bg.currentTime = 0; bg.play(); }catch(e){} }, false);
 function sizeBG(){ const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; }
-window.addEventListener('resize', sizeBG); window.addEventListener('orientationchange', sizeBG); sizeBG();
+addEventListener('resize', sizeBG); addEventListener('orientationchange', sizeBG); sizeBG();
 
 /* ---------- Cameras (33) ---------- */
 const cameras = [
@@ -223,25 +227,17 @@ const lineLayer = L.layerGroup();
 
 function initMap(){
   map = L.map('map',{ zoomControl:true }).setView([37.7749,-122.4194],12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
-    attribution:'&copy; OpenStreetMap'
-  }).addTo(map);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{ attribution:'&copy; OpenStreetMap' }).addTo(map);
 
   camLayer.addTo(map);
   lineLayer.addTo(map);
 
-  // camera markers
   const camIcon = L.icon({
-    iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent(
-      `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>`
-    ),
+    iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>'),
     iconSize:[28,28], iconAnchor:[14,14]
   });
-  cameras.forEach(c=>{
-    L.marker([c.lat,c.lon],{icon:camIcon}).addTo(camLayer).bindPopup(c.name);
-  });
+  cameras.forEach(c=> L.marker([c.lat,c.lon],{icon:camIcon}).addTo(camLayer).bindPopup(c.name));
 
-  // list
   const ul = document.querySelector('.camera-list');
   if (ul){
     cameras.forEach(c=>{
@@ -253,15 +249,13 @@ function initMap(){
     });
   }
 
-  // nice user locator
   const dot = L.divIcon({ className:'loc-dot' });
   userMarker = L.marker([37.7749,-122.4194],{icon:dot});
 }
 
-/* ---------- Unified Audio (no overlaps) ---------- */
+/* ---------- Audio unlock (WebAudio + HTMLAudio) ---------- */
 const AUDIO_BASE = `${BASE}/images/audio/`;
 
-// Robust unlock (iOS/Chrome safe)
 const AudioUnlock = (() => {
   let ctx = null, unlocked = false;
   async function unlock() {
@@ -280,11 +274,14 @@ const AudioUnlock = (() => {
     window.addEventListener('pointerdown', fn, { once:true });
   }
   onFirstPointer();
-  return { unlock, get unlocked(){ return unlocked; } };
+  return {
+    unlock,
+    get unlocked(){ return unlocked; },
+    get ctx(){ return ctx; }
+  };
 })();
 
 let player = new Audio();
-// Play a single file now; resolves when it ends (or on error)
 async function playNow(url) {
   await AudioUnlock.unlock();
   try { player.pause(); } catch {}
@@ -296,36 +293,18 @@ async function playNow(url) {
   });
 }
 
-/* ---------- Location audio + alert composition ---------- */
+/* ---------- Location audio (sequential) ---------- */
 const STEMS = Array.from({length:11},(_,i)=>`speed_camera_ahead_${i+1}.mp3`);
 const TAGS = [
-  'brake_the_habit.mp3',
-  'this_picture_is_not_for_the_gram.mp3',      // repo name
-  'your_wallet_just_got_a_little_nervous.mp3',
-  'no_need_for_a_photo_finish.mp3',
-  'your_best_pose_is_slow.mp3',
-  'they_go_high_we_go_slow.mp3',
-  'keep_it_chill_avoid_the_bill.mp3',
-  'slow_is_the_new_fast.mp3',
-  'pace_yourself.mp3',
-  'less_gas_more_class.mp3',
-  'the_smart_money_is_on_slowing_down.mp3',
-  'avoid_the_money_shot.mp3',
-  'chill_now_thank_yourself_later.mp3',
-  'no_rush_no_fuss.mp3',
-  // 'safety_first_bitches.mp3',                // not in repo
-  'easy_does_it.mp3',
-  'save_the_drama_for_the_drivethru.mp3',
-  'your_brakes_called_they_are_ready_to_help.mp3',
-  'lets_keep_your_record_clean_ish.mp3',
-  'slow_jams_only.mp3',
-  'brake_it_till_you_make_it.mp3',
-  'slow_and_easy_hotshot.mp3',
-  'the_only_rush_is_in_your_head.mp3',
-  'drive_like_someone_is_watching.mp3',
-  'give_those_brakes_a_little_love.mp3',
-  'slow_is_the_flex.mp3',
-  'Your_future_self_says_thanks.mp3',          // case in repo
+  'brake_the_habit.mp3','this_picture_is_not_for_the_gram.mp3','your_wallet_just_got_a_little_nervous.mp3',
+  'no_need_for_a_photo_finish.mp3','your_best_pose_is_slow.mp3','they_go_high_we_go_slow.mp3',
+  'keep_it_chill_avoid_the_bill.mp3','slow_is_the_new_fast.mp3','pace_yourself.mp3',
+  'less_gas_more_class.mp3','the_smart_money_is_on_slowing_down.mp3','avoid_the_money_shot.mp3',
+  'chill_now_thank_yourself_later.mp3','no_rush_no_fuss.mp3','easy_does_it.mp3',
+  'save_the_drama_for_the_drivethru.mp3','your_brakes_called_they_are_ready_to_help.mp3',
+  'lets_keep_your_record_clean_ish.mp3','slow_jams_only.mp3','brake_it_till_you_make_it.mp3',
+  'slow_and_easy_hotshot.mp3','the_only_rush_is_in_your_head.mp3','drive_like_someone_is_watching.mp3',
+  'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','Your_future_self_says_thanks.mp3',
   'brakes_are_a_good_good_friend.mp3'
 ];
 const LOC = {
@@ -380,8 +359,8 @@ async function playGeofenceAlert(name){
   if(navigator.vibrate) navigator.vibrate([250,100,250]);
 }
 
-/* ---------- SPEED LIMIT sign (placeholder) ---------- */
-const SPEED_LIMITS = {}; // (populated if ArcGIS returns POSTED speeds)
+/* ---------- SPEED LIMIT sign ---------- */
+const SPEED_LIMITS = {};
 function showSpeedSign(limit){
   const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
   if (!box || !val) return;
@@ -391,7 +370,7 @@ function showSpeedSign(limit){
 }
 function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-/* ---------- ArcGIS corridor lines (best effort) ---------- */
+/* ---------- ArcGIS corridors ---------- */
 const ARCGIS_LAYER_URL = 'https://services.arcgis.com/Zs2aNLFN00jrS4gG/arcgis/rest/services/Proposed_Automated_Speed_Enforcement_Locations_WFL1/FeatureServer/4';
 async function addCorridors(){
   try{
@@ -399,7 +378,7 @@ async function addCorridors(){
     const r = await fetch(url,{cache:'no-store'});
     if(!r.ok) throw 0;
     const fc = await r.json();
-    const style = { color:'#00FFFF', weight:3, opacity:0.8 }; // cyan for visibility
+    const style = { color:'#00FFFF', weight:3, opacity:0.8 };
     (fc.features||[]).forEach(f=>{
       if(f.geometry && (f.geometry.type==='LineString' || f.geometry.type==='MultiLineString')){
         L.geoJSON(f, { style }).addTo(lineLayer);
@@ -408,18 +387,16 @@ async function addCorridors(){
       const nm = f.properties?.CORRIDOR || f.properties?.Name || f.properties?.Segment || null;
       if(nm && Number.isFinite(+sp)) SPEED_LIMITS[String(nm)] = +sp;
     });
-  }catch(e){
-    // Silent: if the service is unreachable, we still have markers.
-  }
+  }catch(e){}
 }
 
-/* ---------- Geofencing (simplified gates; proven thresholds) ---------- */
+/* ---------- Geofencing ---------- */
 const ENTER_M = 35, EXIT_M = 55, MAX_ACC_M = 30, MIN_SPEED_MPS = 2.2, COOLDOWN_MS = 45000;
 const insideNow = new Set(), lastAlertAt = new Map();
 function toRad(d){return d*Math.PI/180}
 function distKm(aLat,aLon,bLat,bLon){
   const R=6371,dLat=toRad(bLat-aLat),dLon=toRad(bLon-aLon);
-  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(blat))*Math.sin(dLon/2)**2;
+  const s=Math.sin(dLat/2)**2+Math.cos(toRad(aLat))*Math.cos(toRad(bLat))*Math.sin(dLon/2)**2;
   return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s));
 }
 function passesGates(coords){
@@ -432,14 +409,12 @@ function startGPS(){
   if(!('geolocation' in navigator)) return;
   if(window.__watchId!=null) return;
 
-  // show user dot layer
   if (!map.hasLayer(userMarker)) userMarker.addTo(map);
 
   window.__watchId = navigator.geolocation.watchPosition(async pos=>{
     const {latitude,longitude} = pos.coords;
     if(!passesGates(pos.coords)) return;
 
-    // move user marker; keep map loosely centered when GPS is active
     userMarker.setLatLng([latitude,longitude]);
 
     const now=Date.now();
@@ -472,7 +447,7 @@ function stopGPS(){
 
 /* ---------- Sound & GPS tri-state button ---------- */
 const warmBtn = document.getElementById('warmup');
-let mode = 'off'; // 'off' | 'on' | 'mute'
+let mode = 'off';
 function applyMode(){
   warmBtn.classList.remove('btn-off','btn-on','btn-mute');
   if(mode==='off'){ warmBtn.classList.add('btn-off'); warmBtn.textContent='Sound & GPS: Off'; stopGPS(); }
@@ -482,24 +457,26 @@ function applyMode(){
 warmBtn.addEventListener('click', async ()=>{
   mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
   applyMode();
-  if (mode !== 'off') { await AudioUnlock.unlock(); } // ensure audio unlock when enabling GPS modes
+  if (mode !== 'off') { await AudioUnlock.unlock(); }
 });
 applyMode();
 
-/* ---------- Trial Nag (locked to VO; waits for geofence; retries on fail) ---------- */
-const NAG_FIRST_MS = 120000;      // 120 s first
-const NAG_REPEAT_MS = 30*60*1000; // 30 min repeat
+/* ---------- Trial Nag (WebAudio-first, gesture-gated fallback) ---------- */
+const NAG_FIRST_MS = 120000;
+const NAG_REPEAT_MS = 30*60*1000;
 const NAG_IMAGES = [ `${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png` ];
 const NAG_AUDIO_URL = `${BASE}/images/audio/Ad1.mp3`;
 
 const nagEl  = document.getElementById('nag');
 const nagImg = document.getElementById('nagImg');
 const nagCount = document.getElementById('nagCountdown');
-const nagAudio = new Audio(NAG_AUDIO_URL);
+const nagAudio = new Audio(NAG_AUDIO_URL); // fallback element
 nagAudio.preload = 'auto';
 nagAudio.crossOrigin = 'anonymous';
 
 let nagPlaying = false;
+let nagBuffer = null;
+let nagBufferReady = false;
 
 function blockPage() {
   document.body.style.pointerEvents = 'none';
@@ -515,31 +492,52 @@ async function waitForGeofenceIdle(timeoutMs=15000){
   while (geofencePlaying && (Date.now()-start)<timeoutMs){ await sleep(100); }
 }
 
-async function playNagAudioWithRetry(){
-  await AudioUnlock.unlock();
+/* fetch & decode nag VO via WebAudio (after unlock) */
+async function ensureNagBuffer(){
+  if (nagBufferReady) return nagBuffer;
+  try{
+    const res = await fetch(NAG_AUDIO_URL, { cache:'force-cache' });
+    const ab = await res.arrayBuffer();
+    await AudioUnlock.unlock();
+    const ctx = AudioUnlock.ctx;
+    nagBuffer = await ctx.decodeAudioData(ab);
+    nagBufferReady = true;
+  }catch(e){
+    nagBufferReady = false;
+  }
+  return nagBuffer;
+}
 
-  // iOS reliability: always rewind & reload before play
+async function playNagWebAudio(){
+  const buf = await ensureNagBuffer();
+  if (!buf) throw new Error('no-buffer');
+  const ctx = AudioUnlock.ctx;
+  return new Promise(resolve=>{
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.onended = resolve;
+    try { src.start(0); } catch { resolve(); }
+  });
+}
+
+async function playNagAudioFallback(){
+  await AudioUnlock.unlock();
   try { nagAudio.pause(); } catch {}
   try { nagAudio.currentTime = 0; } catch {}
   try { nagAudio.load(); } catch {}
-
-  try {
-    await nagAudio.play();
-    return true;
-  } catch {
+  try { await nagAudio.play(); }
+  catch {
     await sleep(300);
-    try {
-      await nagAudio.play();
-      return true;
-    } catch (e2) {
-      // Fallback: require one tap on the popup to start audio (still locked; cannot dismiss)
+    try { await nagAudio.play(); }
+    catch {
+      // last resort: require one tap on the popup to start VO (still locked)
       nagEl.style.pointerEvents = 'auto';
       nagEl.onclick = async (ev)=>{
         ev.stopPropagation();
         nagEl.onclick = null;
         try { await nagAudio.play(); } catch {}
       };
-      return false;
     }
   }
 }
@@ -552,12 +550,10 @@ async function showNag(){
   nagEl.style.display = 'flex';
   blockPage();
 
-  // Countdown fallback 25s; sync when metadata available
+  // countdown fallback; sync when we know duration (fallback element)
   let left = 25;
   nagCount.textContent = left;
   const timer = setInterval(()=>{ left = Math.max(0, left-1); nagCount.textContent = left; }, 1000);
-
-  // If metadata loads, sync countdown to actual duration
   const metaHandler = () => {
     if (isFinite(nagAudio.duration) && nagAudio.duration > 1) {
       left = Math.ceil(nagAudio.duration);
@@ -567,33 +563,45 @@ async function showNag(){
   };
   nagAudio.addEventListener('loadedmetadata', metaHandler);
 
-  // Wait for any geofence sequence to finish so sounds don't fight
   await waitForGeofenceIdle();
 
-  // Try to play the nag VO (with retries / tap fallback)
-  await playNagAudioWithRetry();
+  // If audio is still locked at this moment, require one tap to start VO (cannot dismiss until ended)
+  if (!AudioUnlock.unlocked) {
+    nagEl.style.pointerEvents = 'auto';
+    nagEl.onclick = async (ev) => {
+      ev.stopPropagation();
+      nagEl.onclick = null;
+      try { await AudioUnlock.unlock(); } catch {}
+      try { await playNagWebAudio(); }
+      catch { await playNagAudioFallback(); await new Promise(res => { nagAudio.onended = res; }); }
+      finishNag();
+    };
+    return; // finishNag will run from the tap path
+  }
 
-  nagAudio.onended = () => {
+  try { await playNagWebAudio(); }
+  catch { await playNagAudioFallback(); await new Promise(res => { nagAudio.onended = res; }); }
+  finishNag();
+
+  function finishNag(){
     clearInterval(timer);
     nagCount.textContent = '0';
-    // Enable clicks only after VO ends
     nagEl.onclick = () => { nagEl.style.display='none'; };
     nagImg.onclick = () => { window.open(STRIPE_URL, '_blank', 'noopener'); nagEl.style.display='none'; };
     unblockPage();
-    // Auto-hide after 8s if ignored
     setTimeout(()=>{ if(nagEl.style.display==='flex'){ nagEl.style.display='none'; } }, 8000);
     nagPlaying = false;
-  };
+  }
 }
 setTimeout(showNag, NAG_FIRST_MS);
 setInterval(showNag, NAG_REPEAT_MS);
 
-/* ---------- Gentle audio preloader (stems, tags, locations) ---------- */
+/* ---------- Gentle audio preloader ---------- */
 function buildAudioUrls(){
   const urls = [];
-  for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);       // stems
-  for (const t of TAGS)  urls.push(`${AUDIO_BASE}${t}`);       // tags
-  Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`)); // locations
+  for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
+  for (const t of TAGS)  urls.push(`${AUDIO_BASE}${t}`);
+  Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`));
   return urls;
 }
 async function preloadAudioList(urls, concurrency=4){
@@ -606,7 +614,7 @@ async function preloadAudioList(urls, concurrency=4){
         a.preload = 'auto';
         a.src = url;
         a.load();
-        await sleep(60); // tiny stagger
+        await sleep(60);
       }catch(e){}
     }
   });
@@ -616,11 +624,12 @@ async function preloadAudioList(urls, concurrency=4){
 /* ---------- Boot ---------- */
 (async function boot(){
   initMap();
-  addCorridors(); // best-effort; app still works if it fails
-
-  // Start preloading after a tick (let map paint first)
+  addCorridors();
+  // Pre-decode nag buffer early (quietly). If unlock isn’t ready yet, it will decode on first showNag().
+  ensureNagBuffer().catch(()=>{});
   setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 4); }, 300);
 })();
+}); // DOMContentLoaded
 </script>
 </body>
 </html>
