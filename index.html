@@ -79,6 +79,15 @@
   .nag-count{ position:absolute; bottom:10px; right:14px; background:rgba(0,0,0,.6); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800; }
 
   .leaflet-popup-content a{ text-decoration:none; pointer-events:none; color:inherit; }
+
+  /* Visible DEV badge */
+  .dev-badge {
+    position: fixed; left: 10px; bottom: 10px; z-index: 9999;
+    background: #8b5cf6; color:#fff; padding:6px 10px; border-radius:999px;
+    font: 700 12px/1 system-ui, -apple-system, Arial; box-shadow:0 6px 18px rgba(0,0,0,.35);
+    display:none;
+  }
+  .dev-badge.show { display:inline-block; }
 </style>
 </head>
 <body>
@@ -101,6 +110,7 @@
         <div class="d-flex gap-2 align-items-center mb-3">
           <a id="payCTA" class="btn btn-primary btn-match" href="#" aria-label="Upgrade to Pro" rel="noopener">Go Pro</a>
           <button id="warmup" class="btn btn-match btn-off" aria-pressed="false" aria-live="polite">Sound &amp; GPS: Off</button>
+          <button id="testSound" class="btn btn-secondary btn-match" style="display:none">Test Sound</button>
         </div>
 
         <div id="map" class="mb-3" tabindex="-1"></div>
@@ -128,6 +138,8 @@
     </div>
   </div>
 
+  <div id="devBadge" class="dev-badge">DEV BUILD</div>
+
   <footer>
     <small>&copy; 2025 SF Speed Cameras • <a href="#" class="text-white-50">Privacy</a> • <a href="#" class="text-white-50">Contact</a></small>
   </footer>
@@ -154,9 +166,11 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   const DATA_BASE = `${BASE}/data`;
 
-  /* -------- DEV toggle -------- */
+  /* -------- DEV toggle + visible badge -------- */
   const DEV = /[?&]dev=1\b/.test(location.search);
   if (DEV) console.info('DEV mode active: shorter timers, logs, cache-bust.');
+  const devBadge = document.getElementById('devBadge');
+  if (DEV && devBadge) devBadge.classList.add('show');
 
   /* -------- Background video (autoplay-safe) -------- */
   const bg = document.getElementById('bgvid');
@@ -170,14 +184,33 @@ window.addEventListener('DOMContentLoaded', () => {
     retryPlay();
   }
 
-  /* -------- Overlay PNGs -------- */
+  /* -------- Overlay PNGs + dynamic spacing -------- */
   const ovM = document.getElementById('ovPaidSrcM');
   if (ovM) ovM.srcset = `${BASE}/images/Copyblockmobile_paid.png`;
   const paidImg = document.getElementById('ovPaidImg');
   if (paidImg){
     paidImg.src = `${BASE}/images/Copyblockdesktop_paid.png`;
-    paidImg.addEventListener('load', () => { void paidImg.offsetHeight; paidImg.style.transform = `translateY(var(--overlay-paid-offset))`; }, { once:true });
+    paidImg.addEventListener('load', () => {
+      paidImg.style.transform = `translateY(var(--overlay-paid-offset))`;
+      requestAnimationFrame(() => requestAnimationFrame(applyOverlaySpacing));
+    }, { once:true });
   }
+
+  function applyOverlaySpacing() {
+    const root = document.documentElement;
+    const topPx = parseFloat(getComputedStyle(root).getPropertyValue('--overlay-top')) || 0;
+    const paidOffset = parseFloat(getComputedStyle(root).getPropertyValue('--overlay-paid-offset')) || 0; // negative
+    const ph = paidImg?.getBoundingClientRect().height || 0;
+    const measured = ph ? Math.round(ph + topPx + paidOffset) : 220; // fallback
+    const mt = Math.max(0, measured);
+    root.style.setProperty('--paid-offset-mobile', `${mt}px`);
+    root.style.setProperty('--paid-offset-desktop', `${Math.max(mt, 330)}px`);
+    if (DEV) console.info('[DEV] overlay h:', ph, 'margin-top:', mt);
+  }
+  applyOverlaySpacing();
+  let ovRzT; const reflowOverlay = () => { clearTimeout(ovRzT); ovRzT = setTimeout(applyOverlaySpacing, 100); };
+  addEventListener('resize', reflowOverlay, { passive:true });
+  addEventListener('orientationchange', reflowOverlay);
 
   /* -------- Stripe -------- */
   const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
@@ -239,7 +272,7 @@ window.addEventListener('DOMContentLoaded', () => {
     userMarker = L.marker([37.7749,-122.4194],{icon:dot});
   }
 
-  /* -------- Audio unlock + playback -------- */
+  /* -------- Audio unlock + helpers -------- */
   const AUDIO_BASE = `${BASE}/images/audio/`;
   const AudioUnlock = (() => {
     let ctx = null, unlocked = false;
@@ -258,18 +291,30 @@ window.addEventListener('DOMContentLoaded', () => {
     return { unlock, get unlocked(){ return unlocked; }, get ctx(){ return ctx; } };
   })();
 
+  async function ensureAudioReady(){
+    try{
+      await AudioUnlock.unlock();
+      const ctx = AudioUnlock.ctx;
+      if (ctx && ctx.state === 'suspended') { await ctx.resume(); }
+    }catch{}
+  }
+  window.addEventListener('touchend', () => AudioUnlock.unlock(), { once:true, passive:true });
+
   let player = new Audio();
   async function playNow(url){
     if (mode === 'mute') return;
-    await AudioUnlock.unlock();
+    if (document.visibilityState !== 'visible') { if (DEV) console.warn('Audio blocked: page hidden'); return; }
+    await ensureAudioReady();
     try { player.pause(); } catch {}
     const u = url + (DEV ? ((url.includes('?')?'&':'?')+'v='+Date.now()) : '');
     return new Promise((resolve) => {
       player = new Audio(u);
-      player.muted = false; // iOS quirk guard
-      player.onended = resolve;
-      player.onerror = () => { if (DEV) console.error('Audio error:', u); resolve(); };
-      player.play().catch(()=> resolve());
+      player.muted = false; player.preload = 'auto'; player.crossOrigin = 'anonymous';
+      const done = (ok) => { if (!ok) showDebug('Audio fail: ' + u.split('/').pop(), true); resolve(); };
+      const safety = setTimeout(()=>{ try{player.pause();}catch{} done(false); }, 3000);
+      player.onended = () => { clearTimeout(safety); done(true); };
+      player.onerror = () => { clearTimeout(safety); if (DEV) console.error('Audio error:', u); done(false); };
+      player.play().catch(err => { if (DEV) console.error('play() rejected:', err); clearTimeout(safety); done(false); });
     });
   }
 
@@ -324,11 +369,10 @@ window.addEventListener('DOMContentLoaded', () => {
   function pick(a){return a[Math.floor(Math.random()*a.length)]}
   function playLocationOnly(name){ const f=LOC[name]; if(f) playNow(`${AUDIO_BASE}${f}`); }
 
-  /* -------- Poles & Corridors (robust load + draw) -------- */
+  /* -------- Poles & Corridors -------- */
   const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
   const POLES_URL = `${DATA_BASE}/poles.json`;
 
-  // Fill-only style, no outline
   const POLY_STYLE = { stroke:false, weight:0, color:'#1e88e5', opacity:0, fillColor:'#1e88e5', fillOpacity:0.18 };
 
   function toRad(d){return d*Math.PI/180}
@@ -356,7 +400,6 @@ window.addEventListener('DOMContentLoaded', () => {
     else if (geo.type === 'FeatureCollection') (geo.features || []).forEach(pushOne);
   }
 
-  // Normalize: buffer line features (~30m) into polygons
   function normalizeToPolygons(fc) {
     const out = [];
     for (const f of (fc?.features||[])) {
@@ -384,10 +427,9 @@ window.addEventListener('DOMContentLoaded', () => {
     return layer;
   }
 
-  // Poly -> MultiLineString helper (handles MultiPolygons / FC)
   function polyToMultiLine(feature){
     try {
-      const out = turf.polygonToLine(feature); // LineString | MultiLineString | FeatureCollection
+      const out = turf.polygonToLine(feature);
       if (!out) return null;
       if (out.type === 'Feature' && /LineString/i.test(out.geometry?.type)) return out;
       if (out.type === 'Feature' && out.geometry?.type === 'MultiLineString') return out;
@@ -402,7 +444,6 @@ window.addEventListener('DOMContentLoaded', () => {
     return null;
   }
 
-  // Snap a Point (lng,lat) to the boundary line of a polygon (roadside look)
   function snapToPolygonEdge(lng, lat, polyFeature){
     try{
       const pt = turf.point([lng, lat]);
@@ -411,13 +452,12 @@ window.addEventListener('DOMContentLoaded', () => {
       if (!line) return [lat, lng];
       const snapped = turf.nearestPointOnLine(line, pt, { units:'kilometers' });
       const [slng, slat] = snapped.geometry.coordinates;
-      return [slat, slng]; // Leaflet order
+      return [slat, slng];
     }catch{
-      return [lat, lng]; // fallback: original
+      return [lat, lng];
     }
   }
 
-  // Keep at most one corridor polygon per pole (prefers nearest center-of-mass)
   function filterCorridorsToPoles(corridorsFC, polesFC){
     const polys = (corridorsFC.features || []).filter(f => {
       const t = f.geometry?.type; return t === 'Polygon' || t === 'MultiPolygon';
@@ -427,7 +467,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const picked = new Set();
     const selected = [];
-    const corridorForPole = new Map(); // name -> polygon feature
+    const corridorForPole = new Map();
 
     for (const pole of poles){
       const name = pole.properties?.name || `pole_${selected.length+1}`;
@@ -495,8 +535,8 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- Speed sign (fallback + timers) -------- */
   let speedSignTO=null;
-  const DEFAULT_LIMIT = 30;                     // fallback if data missing
-  const SPEED_SIGN_MS = DEV ? 2000 : 5000;      // tighter in DEV
+  const DEFAULT_LIMIT = 30;
+  const SPEED_SIGN_MS = DEV ? 2000 : 5000;
 
   function showSpeedSign(limit){
     const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
@@ -504,7 +544,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const usingFallback = !Number.isFinite(limit);
     const toShow = usingFallback ? DEFAULT_LIMIT : limit;
 
-    box.classList.remove('fallback','unknown'); // reset prior state
+    box.classList.remove('fallback','unknown');
     box.classList.toggle('fallback', usingFallback);
     val.textContent = String(toShow);
     box.hidden = false; box.classList.add('show');
@@ -519,21 +559,21 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(()=>{box.hidden=true;},200);
   }
 
-  // Gates / timing (dynamic lead based on speed, clamped)
-  const EXIT_M  = 150;         // was 300
-  const HYSTERESIS_M = 20;     // was 50
+  /* -------- Gates / timing -------- */
+  const EXIT_M  = 150;
+  const HYSTERESIS_M = 20;
   const MAX_ACC_M = 75;
   const MIN_SPEED_MPS = 2.2;
-  const COOLDOWN_MS = 10000;   // was 45000
+  const COOLDOWN_MS = 10000;
   const REARM_M = DEV ? 50 : 100;
 
   function enterDistanceM(speedMps){
     const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.35; // ~50 mph
-    return Math.max(150, Math.min(450, Math.round(v * 11))); // ≈11s lead, up to 450 m
+    return Math.max(150, Math.min(450, Math.round(v * 11)));
   }
 
   const insideNow = new Set(), lastAlertAt = new Map();
-  const lastAlertPos = new Map(); // name -> {lat, lon}
+  const lastAlertPos = new Map();
   function distM(aLat,aLon,bLat,bLon){ return distKm(aLat,aLon,bLat,bLon)*1000; }
   function markAlert(name, lat, lon){
     lastAlertAt.set(name, Date.now());
@@ -559,7 +599,7 @@ window.addEventListener('DOMContentLoaded', () => {
   async function startGPS(){
     if(!('geolocation' in navigator)) return;
     if(window.__watchId!=null) return;
-    await dataReady; // ensure corridors/poles/speeds loaded
+    await dataReady;
     if (!map.hasLayer(userMarker)) userMarker.addTo(map);
 
     window.__watchId = navigator.geolocation.watchPosition(async pos=>{
@@ -595,6 +635,7 @@ window.addEventListener('DOMContentLoaded', () => {
           const last = lastAlertAt.get(cam.name)||0;
           if(now-last>COOLDOWN_MS && movedEnough){
             if (DEV) console.debug('[DEV] alert ->', cam.name);
+            await ensureAudioReady();
             playGeofenceAlert(cam.name);
             markAlert(cam.name, latitude, longitude);
           } else if (DEV) {
@@ -620,6 +661,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   /* -------- Warmup button -------- */
   const warmBtn = document.getElementById('warmup');
+  const testBtn = document.getElementById('testSound');
   let mode = 'off';
   const isMobile = /iPhone|Android/i.test(navigator.userAgent);
 
@@ -640,6 +682,13 @@ window.addEventListener('DOMContentLoaded', () => {
     }
     mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
     applyMode();
+  });
+
+  if (DEV && testBtn) testBtn.style.display = '';
+  testBtn?.addEventListener('click', async ()=>{
+    await ensureAudioReady();
+    await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
+    await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
   });
 
   /* -------- Trial Nag (audio-synced close + caps) -------- */
@@ -686,7 +735,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   async function showNag(){
     if (nagPlaying) return; nagPlaying = true;
-    const audioAllowed = (mode !== 'off' && mode !== 'mute');
+    const audioAllowed = (mode === 'on');
     lastActive = document.activeElement;
     if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random()*NAG_IMAGES.length)];
     if (nagEl) { nagEl.style.display = 'flex'; nagEl.tabIndex = -1; nagEl.focus(); focusTrapOn(); }
@@ -701,7 +750,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     try {
       if (audioAllowed) {
-        // short cap even if audio misbehaves
+        await ensureAudioReady();
         capTO = setTimeout(closeNag, NAG_MAX_VISIBLE_MS_AUDIO);
         try { await playNagWebAudio(); }
         catch { await playNagAudioFallback(); await new Promise(r=>{nagAudio.onended=r;}); }
@@ -713,7 +762,6 @@ window.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // Start nag after first delay; keep interval armed only when visible
   setTimeout(()=>{ if (!document.hidden) showNag(); }, NAG_FIRST_MS);
   let nagInt = null;
   function armNagInterval(){
@@ -728,6 +776,7 @@ window.addEventListener('DOMContentLoaded', () => {
     const f=LOC[name];
     try{
       if (mode !== 'mute') {
+        await ensureAudioReady();
         const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, f?`${AUDIO_BASE}${f}`:null, `${AUDIO_BASE}${pick(TAGS)}` ].filter(Boolean);
         for (const url of seq){ await playNow(url); }
       }
@@ -736,7 +785,7 @@ window.addEventListener('DOMContentLoaded', () => {
     showSpeedSign(SPEED_LIMITS[name]);
   }
 
-  /* -------- Speed limits loader (authoritative JSON; optional) -------- */
+  /* -------- Speed limits loader -------- */
   const SPEED_LIMITS = {};
   const SPEEDS_URL = `${DATA_BASE}/camera_speed_limits.json`;
   function canonicalize(n){
@@ -762,7 +811,7 @@ window.addEventListener('DOMContentLoaded', () => {
     }catch(e){ /* file may not exist; ignore */ }
   }
 
-  /* -------- Start everything (with counts/debug) -------- */
+  /* -------- Start everything -------- */
   initMap();
 
   let cameras = [];
@@ -778,7 +827,6 @@ window.addEventListener('DOMContentLoaded', () => {
 
       const corrPolysFC = normalizeToPolygons(corrRaw);
 
-      // Build cameras from poles so names/coords never drift.
       cameras = (poles.features || [])
         .filter(f => f.geometry?.type === 'Point')
         .map(f => {
@@ -799,17 +847,15 @@ window.addEventListener('DOMContentLoaded', () => {
       const poleCount = (poles.features||[]).length;
       showDebug(`Corridors: ${corrCount} • Poles: ${poleCount}`);
 
-      await loadSpeedLimits(); // ensure SPEED_LIMITS ready before GPS
+      await loadSpeedLimits();
       dataReadyResolve();
     }catch(e){
       dataReadyResolve();
     }
 
-    // Preload audio a moment later (keep concurrency light for mobile)
     setTimeout(()=>{ preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3); }, 300);
   })();
 
-  // Enable warmup UI
   function enableWarmup(){ warmBtn.removeAttribute('disabled'); }
   enableWarmup();
 
@@ -834,10 +880,7 @@ window.addEventListener('DOMContentLoaded', () => {
     await Promise.all(workers);
   }
 
-  // Geolocation cleanup on unload/background
   addEventListener('pagehide', stopGPS, { once:true });
-
-  // Initialize UI state last
   applyMode();
 });
 </script>
