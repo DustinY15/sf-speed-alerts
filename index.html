@@ -21,7 +21,8 @@
     --paid-offset-desktop: 330px;
     --overlay-top: 10px;
     --shell-max: 520px;
-    --overlay-paid-offset: -36px; /* raised an extra 12px (was -24px) */
+    /* raised an extra 12px (was -24px) */
+    --overlay-paid-offset: -36px;
   }
   html, body { height:100%; }
   body{
@@ -36,6 +37,7 @@
 
   .overlay-layer{ position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none; }
   .overlay-layer img{ width:100%; height:auto; display:block; }
+  /* Move the PAID overlay image up by 12px (Safari-friendly) */
   #ovPaidImg{ transform:translateY(var(--overlay-paid-offset)); will-change:transform; }
 
   .content-wrap{ position:relative; padding:16px 20px 24px; z-index:3; margin-top:var(--paid-offset-mobile); }
@@ -133,14 +135,26 @@ window.addEventListener('DOMContentLoaded', () => {
   if (location.hash) { history.replaceState(null, '', location.pathname); }
   window.addEventListener('load', () => { window.scrollTo(0, 0); if (document.activeElement) document.activeElement.blur(); }, { once:true });
 
-  /* -------- BASE (works on GitHub Pages or root domain) -------- */
+  /* -------- BASE (drop-in compromise) -------- */
   const REPO = 'sf-speed-alerts';
   const path = location.pathname.replace(/\/+$/, '');
   const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO);
-  const BASE = onRepo ? ('/' + REPO) : '';
+  let BASE = onRepo ? ('/' + REPO) : '';
+
+  // Fallback if deployed under a custom subpath containing the repo name
+  if (!BASE) {
+    const parts = location.pathname.split('/');
+    const idx = parts.lastIndexOf(REPO);
+    if (idx > -1) BASE = '/' + parts.slice(1, idx + 1).join('/');
+  }
+  // Final sanity if code was external
+  if (!BASE && document.currentScript?.src) {
+    const u = new URL(document.currentScript.src, location.href);
+    BASE = u.pathname.replace(/\/[^/]*$/, '');
+  }
   const DATA_BASE = `${BASE}/data`;
 
-  /* -------- Background video -------- */
+  /* -------- Background video (autoplay-safe) -------- */
   const bg = document.getElementById('bgvid');
   const srcEl = document.getElementById('bgvidSrc');
   if (bg && srcEl) {
@@ -167,8 +181,11 @@ window.addEventListener('DOMContentLoaded', () => {
   if (payCTA) payCTA.addEventListener('click', (e)=>{ e.preventDefault(); window.open(STRIPE_URL, '_blank', 'noopener,noreferrer'); });
 
   /* Fit BG container height (debounced) */
-  const sizeBG = () => { const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px'; };
-  let rzT; const debouncedSizeBG = () => { clearTimeout(rzT); rzT = setTimeout(sizeBG, 100); };
+  const sizeBG = () => {
+    const el=document.querySelector('.video-bg'); if(!el) return; el.style.height = window.innerHeight + 'px';
+  };
+  let rzT;
+  const debouncedSizeBG = () => { clearTimeout(rzT); rzT = setTimeout(sizeBG, 100); };
   addEventListener('resize', debouncedSizeBG, { passive:true });
   addEventListener('orientationchange', debouncedSizeBG);
   sizeBG();
@@ -260,7 +277,7 @@ window.addEventListener('DOMContentLoaded', () => {
     'save_the_drama_for_the_drivethru.mp3','your_brakes_called_they_are_ready_to_help.mp3',
     'lets_keep_your_record_clean_ish.mp3','slow_jams_only.mp3','brake_it_till_you_make_it.mp3',
     'slow_and_easy_hotshot.mp3','the_only_rush_is_in_your_head.mp3','drive_like_someone_is_watching.mp3',
-    'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','your_future_self_says_thanks.mp3',
+    'give_those_brakes_a_little_love.mp3','slow_is_the_flex.mp3','Your_future_self_says_thanks.mp3',
     'brakes_are_a_good_good_friend.mp3'
   ];
   const LOC = {
@@ -301,10 +318,11 @@ window.addEventListener('DOMContentLoaded', () => {
   function pick(a){return a[Math.floor(Math.random()*a.length)]}
   function playLocationOnly(name){ const f=LOC[name]; if(f) playNow(`${AUDIO_BASE}${f}`); }
 
-  /* -------- Poles & Corridors -------- */
+  /* -------- Poles & Corridors (robust load + draw) -------- */
   const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
   const POLES_URL = `${DATA_BASE}/poles.json`;
 
+  // Fill-only style, no outline
   const POLY_STYLE = { stroke:false, weight:0, color:'#1e88e5', opacity:0, fillColor:'#1e88e5', fillOpacity:0.18 };
 
   function toRad(d){return d*Math.PI/180}
@@ -332,6 +350,7 @@ window.addEventListener('DOMContentLoaded', () => {
     else if (geo.type === 'FeatureCollection') (geo.features || []).forEach(pushOne);
   }
 
+  // Normalize: buffer line features (~30m) into polygons
   function normalizeToPolygons(fc) {
     const out = [];
     for (const f of (fc?.features||[])) {
@@ -359,50 +378,37 @@ window.addEventListener('DOMContentLoaded', () => {
     return layer;
   }
 
-  function filterCorridorsToPoles(corridorsFC, polesFC){
-    const polys = (corridorsFC.features || []).filter(f => {
-      const t = f.geometry?.type; return t === 'Polygon' || t === 'MultiPolygon';
-    });
-    const centers = polys.map((f, i) => ({ i, c: turf.centerOfMass(f) }));
-    const poles = (polesFC.features || []).filter(f => f.geometry?.type === 'Point');
-
-    const picked = new Set();
-    const selected = [];
-    const corridorForPole = new Map();
-
-    for (const pole of poles){
-      const name = pole.properties?.name || `pole_${selected.length+1}`;
-      const pt = turf.point(pole.geometry.coordinates);
-      const ranked = centers
-        .map(({i, c}) => ({ i, d: turf.distance(pt, c, { units:'kilometers' }) }))
-        .sort((a,b)=>a.d-b.d);
-
-      const choice = ranked.find(r => !picked.has(r.i))?.i ?? ranked[0]?.i;
-      if (choice != null){
-        picked.add(choice);
-        const poly = polys[choice];
-        selected.push(poly);
-        corridorForPole.set(name, poly);
+  // Poly -> MultiLineString helper (handles MultiPolygons / FC)
+  function polyToMultiLine(feature){
+    try {
+      const out = turf.polygonToLine(feature); // LineString | MultiLineString | FeatureCollection
+      if (!out) return null;
+      if (out.type === 'Feature' && /LineString/i.test(out.geometry?.type)) return out;
+      if (out.type === 'Feature' && out.geometry?.type === 'MultiLineString') return out;
+      if (out.type === 'FeatureCollection') {
+        const lines = out.features
+          .map(f => f.geometry)
+          .filter(g => g && /LineString/i.test(g.type))
+          .map(g => g.coordinates);
+        if (lines.length) return turf.multiLineString(lines);
       }
-    }
-
-    return { fc: { type:'FeatureCollection', features: selected }, corridorForPole };
+    } catch {}
+    return null;
   }
 
+  // Snap a Point (lng,lat) to the boundary line of a polygon (roadside look)
   function snapToPolygonEdge(lng, lat, polyFeature){
     try{
       const pt = turf.point([lng, lat]);
-      let line;
-      try { line = turf.polygonToLine(polyFeature); }
-      catch {
-        const coords = polyFeature?.geometry?.coordinates?.[0];
-        if (coords) line = turf.lineString(coords);
-      }
+      const line = polyToMultiLine(polyFeature) ||
+                   (polyFeature?.geometry?.coordinates?.[0] ? turf.lineString(polyFeature.geometry.coordinates[0]) : null);
       if (!line) return [lat, lng];
       const snapped = turf.nearestPointOnLine(line, pt, { units:'kilometers' });
       const [slng, slat] = snapped.geometry.coordinates;
-      return [slat, slng];
-    }catch{ return [lat, lng]; }
+      return [slat, slng]; // Leaflet order
+    }catch{
+      return [lat, lng]; // fallback: original
+    }
   }
 
   function addPoleMarkers(fc, corridorForPole){
@@ -450,8 +456,8 @@ window.addEventListener('DOMContentLoaded', () => {
     if(latlngs.length){ map.fitBounds(L.latLngBounds(latlngs).pad(0.2)); }
   }
 
-  /* -------- Speed sign -------- */
-  const SPEED_LIMITS = {};
+  /* -------- Speed sign (explicit-only) -------- */
+  const SPEED_LIMITS = {}; // filled by loader if provided
   function showSpeedSign(limit){
     const box = document.getElementById('speedSign'); const val = document.getElementById('speedLimitValue');
     if (!box || !val) return;
@@ -461,34 +467,16 @@ window.addEventListener('DOMContentLoaded', () => {
   }
   function hideSpeedSign(){ const box=document.getElementById('speedSign'); if(!box) return; box.classList.remove('show'); setTimeout(()=>{box.hidden=true;},250); }
 
-  let signHideTimer = null;
-  function autoHideSpeedSign(ms){
-    if (signHideTimer) clearTimeout(signHideTimer);
-    signHideTimer = setTimeout(hideSpeedSign, ms);
-  }
-
-  function beep(durationMs=140, freq=1200){
-    try{
-      const ctx = AudioUnlock.ctx || new (window.AudioContext||window.webkitAudioContext)();
-      const o = ctx.createOscillator(); const g = ctx.createGain();
-      o.type = 'sine'; o.frequency.value = freq;
-      g.gain.setValueAtTime(0.001, ctx.currentTime);
-      g.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.02);
-      g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs/1000);
-      o.connect(g).connect(ctx.destination);
-      o.start(); o.stop(ctx.currentTime + durationMs/1000 + 0.02);
-    }catch{}
-  }
-
-  // Gates / timing
+  // Gates / timing (dynamic lead based on speed, clamped)
   const EXIT_M  = 300;
+  const HYSTERESIS_M = 50;           // small buffer to prevent ping-pong
   const MAX_ACC_M = 75;
-  const MIN_SPEED_MPS = 2.2; // set to 1.0 for slow-speed testing if needed
+  const MIN_SPEED_MPS = 2.2;
   const COOLDOWN_MS = 45000;
 
   function enterDistanceM(speedMps){
-    const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.3; // ~50 mph
-    return Math.max(120, Math.min(320, Math.round(v * 9))); // ~9s lead
+    const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.35; // ~50 mph
+    return Math.max(150, Math.min(450, Math.round(v * 11))); // ≈11s lead, up to 450 m
   }
 
   const insideNow = new Set(), lastAlertAt = new Map();
@@ -512,7 +500,7 @@ window.addEventListener('DOMContentLoaded', () => {
   async function startGPS(){
     if(!('geolocation' in navigator)) return;
     if(window.__watchId!=null) return;
-    await dataReady;
+    await dataReady; // ensure corridors/poles/speeds loaded
     if (!map.hasLayer(userMarker)) userMarker.addTo(map);
 
     window.__watchId = navigator.geolocation.watchPosition(async pos=>{
@@ -522,13 +510,13 @@ window.addEventListener('DOMContentLoaded', () => {
       userMarker.setLatLng([latitude,longitude]);
 
       const inCorridor = isInsideAnyCorridor(latitude, longitude);
-      const nearestName = nearestCameraName(latitude, longitude); // kept (unused in zone calc; harmless)
+      const nearestName = nearestCameraName(latitude, longitude);
 
       const now=Date.now();
       for(const cam of cameras){
         const dM = distKm(latitude, longitude, cam.lat, cam.lon)*1000;
         const nearPoint = dM <= enterDistanceM(pos.coords.speed);
-        const inZone = inCorridor || nearPoint;
+        const inZone = nearPoint || (inCorridor && (nearestName === cam.name));
 
         const wasIn = insideNow.has(cam.name);
 
@@ -539,9 +527,9 @@ window.addEventListener('DOMContentLoaded', () => {
             lastAlertAt.set(cam.name, now);
           }
           insideNow.add(cam.name);
-        } else if (wasIn && !inZone){
+        } else if (wasIn && !inZone && dM > (EXIT_M + HYSTERESIS_M)){
           insideNow.delete(cam.name);
-          autoHideSpeedSign(1500);
+          hideSpeedSign();
         }
       }
     }, err=>console.warn('Geolocation error', err),
@@ -612,7 +600,7 @@ window.addEventListener('DOMContentLoaded', () => {
     if (nagPlaying) return; nagPlaying = true;
     lastActive = document.activeElement;
     if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random()*NAG_IMAGES.length)];
-    if (nagEl) { nagEl.style.display = 'flex'; focusTrapOn(); }
+    if (nagEl) { nagEl.style.display = 'flex'; nagEl.tabIndex = -1; nagEl.focus(); focusTrapOn(); }
     let left = 25; if (nagCount) nagCount.textContent = left;
     const timer = setInterval(()=>{ left = Math.max(0, left-1); if (nagCount) nagCount.textContent = left; }, 1000);
     try { await playNagWebAudio(); } catch { await playNagAudioFallback(); await new Promise(res => { nagAudio.onended = res; }); }
@@ -626,88 +614,56 @@ window.addEventListener('DOMContentLoaded', () => {
     setTimeout(()=>{ if(nagEl && nagEl.style.display==='flex'){ nagEl.style.display='none'; focusTrapOff(); lastActive?.focus?.(); } }, 8000);
     nagPlaying = false;
   }
+
+  // Start nag after first delay; keep interval armed only when visible
   setTimeout(()=>{ if (!document.hidden) showNag(); }, NAG_FIRST_MS);
-  setInterval(()=>{ if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
+  let nagInt = null;
+  function armNagInterval(){
+    clearInterval(nagInt);
+    nagInt = setInterval(()=>{ if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
+  }
+  document.addEventListener('visibilitychange', armNagInterval, { passive:true });
+  armNagInterval();
 
-  /* -------- Geofence alert chain (audio-first, visual delayed) -------- */
+  /* -------- Geofence alert chain -------- */
   async function playGeofenceAlert(name){
-    if(navigator.vibrate) navigator.vibrate([200]);
-    await AudioUnlock.unlock();
-    if (mode !== 'mute') beep(140, 1200);
-
-    if (mode !== 'mute') {
-      const f = LOC[name];
-      const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, f?`${AUDIO_BASE}${f}`:null, `${AUDIO_BASE}${pick(TAGS)}` ].filter(Boolean);
-      (async ()=>{
-        for (const url of seq){
-          try { await playNow(url); } catch(e){ console.warn('Audio play failed', url, e); }
-        }
-      })();
-    }
-
-    const leadMs = 2500, showMs = 7000;
-    setTimeout(()=>{
-      showSpeedSign(SPEED_LIMITS[name]);
-      autoHideSpeedSign(showMs);
-    }, leadMs);
+    const f=LOC[name];
+    try{
+      if (mode !== 'mute') {
+        const seq = [ `${AUDIO_BASE}${pick(STEMS)}`, f?`${AUDIO_BASE}${f}`:null, `${AUDIO_BASE}${pick(TAGS)}` ].filter(Boolean);
+        for (const url of seq){ await playNow(url); }
+      }
+    } finally {}
+    if(navigator.vibrate) navigator.vibrate([250,100,250]);
+    showSpeedSign(SPEED_LIMITS[name]);
   }
 
-  /* -------- Speed limits loader (order-agnostic fuzzy matching) -------- */
+  /* -------- Speed limits loader (authoritative JSON; optional) -------- */
   const SPEEDS_URL = `${DATA_BASE}/camera_speed_limits.json`;
-  function canonicalize(s){
-    return String(s||'').toLowerCase()
+  function canonicalize(n){
+    return String(n).toLowerCase()
       .replace(/\([^)]*\)/g,' ')
-      .replace(/[.,]/g,' ')
-      .replace(/\bfrom\b|\bto\b|\bthe\b/g,' ')
-      .replace(/\b(street|st|avenue|ave|boulevard|blvd|road|rd|drive|dr|way)\b/g,' ')
-      .replace(/\b(nb|sb|eb|wb)\b/g,' ')
+      .replace(/[ ,]/g,' ')
+      .replace(/\bfrom\b|\bto\b/g,' ')
+      .replace(/^\s*the\s+/,'')
+      .replace(/\b(street|st|avenue|ave|boulevard|blvd|road|rd|drive|dr|way)\b/g,'')
       .replace(/-/g,' ')
-      .replace(/\s+/g,' ')
-      .trim();
-  }
-  function toTokens(s){
-    return new Set(
-      canonicalize(s)
-        .split(' ')
-        .map(t => t.replace(/^(\d+)(st|nd|rd|th)$/, '$1'))
-        .filter(Boolean)
-    );
-  }
-  function jaccard(aSet, bSet){
-    let inter = 0;
-    for (const x of aSet) if (bSet.has(x)) inter++;
-    const union = aSet.size + bSet.size - inter || 1;
-    return inter / union;
+      .replace(/\s+/g,' ').trim();
   }
   async function loadSpeedLimits(){
     try{
       const rows = await fetchJSON(SPEEDS_URL);
-      const speedRows = rows.map(r => ({ name: r.name, limit: +r.speedLimit, toks: toTokens(r.name) }));
-      let matched = 0, missed = 0;
-
-      for (const c of cameras){
-        const cToks = toTokens(c.name);
-        let best = null, bestScore = 0;
-        for (const row of speedRows){
-          const score = jaccard(cToks, row.toks);
-          if (score > bestScore){ bestScore = score; best = row; }
-          if (score === 1) break;
-        }
-        if (best && Number.isFinite(best.limit) && bestScore >= 0.66){
-          SPEED_LIMITS[c.name] = best.limit; matched++;
-        } else if (Number.isFinite(c.speedLimit)){
-          SPEED_LIMITS[c.name] = +c.speedLimit; matched++;
-        } else {
-          missed++; console.warn('Speed limit not matched:', c.name, 'bestScore=', bestScore.toFixed(2), '→', best?.name);
-        }
+      const canon = new Map(rows.map(r => [canonicalize(r.name), +r.speedLimit]));
+      for (const c of cameras) {
+        const hit = canon.get(canonicalize(c.name));
+        if (Number.isFinite(hit)) SPEED_LIMITS[c.name] = hit;
       }
-      showDebug(`Speed limits: ${matched} matched • ${missed} missing`);
-    }catch(e){
-      showDebug('Speed limits file missing', true);
-    }
+      // Dev check (remove if noisy)
+      // console.table(Object.entries(SPEED_LIMITS).map(([k,v])=>({camera:k, limit:v})));
+    }catch(e){ /* file may not exist; ignore */ }
   }
 
-  /* -------- Start everything -------- */
+  /* -------- Start everything (with counts/debug) -------- */
   initMap();
 
   let cameras = [];
@@ -721,8 +677,9 @@ window.addEventListener('DOMContentLoaded', () => {
         fetchJSON(POLES_URL)
       ]);
 
-      const corrPolysFC = normalizeToPolygons(corrRaw);
+      const corrPolysFC = normalizeToPolygons(corrRaw); // <-- buffer lines to polygons first
 
+      // Build cameras from poles so names/coords never drift.
       cameras = (poles.features || [])
         .filter(f => f.geometry?.type === 'Point')
         .map(f => {
@@ -739,17 +696,22 @@ window.addEventListener('DOMContentLoaded', () => {
       addCorridors(corr33);
       addPoleMarkers(poles, corridorForPole);
 
-      showDebug(`Corridors: ${(corr33.features||[]).length} • Poles: ${(poles.features||[]).length}`);
+      const corrCount = (corr33.features||[]).length;
+      const poleCount = (poles.features||[]).length;
+      showDebug(`Corridors: ${corrCount} • Poles: ${poleCount}`);
 
-      await loadSpeedLimits();
+      await loadSpeedLimits(); // ensure SPEED_LIMITS ready before GPS
       dataReadyResolve();
     }catch(e){
       dataReadyResolve();
     }
 
-    setTimeout(()=>{ preloadAudioList(buildAudioUrls(), 3); }, 300);
+    // Mobile-aware preload concurrency
+    const isMobile = /iPhone|Android/i.test(navigator.userAgent);
+    setTimeout(()=>{ preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3); }, 300);
   })();
 
+  // Enable warmup UI
   function enableWarmup(){ warmBtn.removeAttribute('disabled'); }
   enableWarmup();
 
@@ -774,6 +736,10 @@ window.addEventListener('DOMContentLoaded', () => {
     await Promise.all(workers);
   }
 
+  // Geolocation cleanup on unload/background
+  addEventListener('pagehide', stopGPS, { once:true });
+
+  // Initialize UI state last
   applyMode();
 });
 </script>
