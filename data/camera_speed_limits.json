@@ -1,35 +1,134 @@
 [
-  {"name":"Fulton from 43rd Avenue to 42nd Avenue","speedLimit":30},
-  {"name":"Fulton from 2nd Avenue to Arguello","speedLimit":30},
-  {"name":"Geary from 7th to 8th Avenue","speedLimit":25},
-  {"name":"Bay from Octavia to Gough","speedLimit":25},
-  {"name":"Franklin from Union to Green","speedLimit":25},
-  {"name":"Columbus from Lombard to Greenwich","speedLimit":20},
-  {"name":"Broadway from Powell to Stockton","speedLimit":20},
-  {"name":"Embarcadero from Green to Battery","speedLimit":30},
-  {"name":"Lincoln from 27th to 28th Avenue","speedLimit":30},
-  {"name":"Sloat from 41st to Skyline","speedLimit":35},
-  {"name":"Geary from Webster to Buchanan","speedLimit":30},
-  {"name":"Turk from Van Ness to Polk","speedLimit":20},
-  {"name":"Mission from 8th to 9th Street","speedLimit":20},
-  {"name":"7th Street from Harrison to Folsom","speedLimit":25},
-  {"name":"10th Street from Harrison to Folsom","speedLimit":25},
-  {"name":"9th Street from Bryant to Harrison","speedLimit":25},
-  {"name":"Harrison from 4th to 5th Street","speedLimit":25},
-  {"name":"Bryant from 2nd to 3rd Street","speedLimit":25},
-  {"name":"King Street (NB only) from 4th to 5th Street","speedLimit":30},
-  {"name":"Ocean Avenue from Frida Kahlo to Howth","speedLimit":25},
-  {"name":"Monterey from Edna to Congo","speedLimit":25},
-  {"name":"Market Street from Danvers to Douglass","speedLimit":30},
-  {"name":"Guerrero from 19th to 20th Street","speedLimit":25},
-  {"name":"San Jose Avenue from 29th to 30th Street","speedLimit":30},
-  {"name":"16th Street from Bryant to Potrero","speedLimit":25},
-  {"name":"Cesar Chavez from Folsom to Harrison","speedLimit":25},
-  {"name":"Cesar Chavez from Indiana to Tennessee","speedLimit":25},
-  {"name":"3rd Street from Key Avenue to Jamestown Avenue","speedLimit":25},
-  {"name":"Bayshore Blvd from 101 off-ramp to Tunnel Ave","speedLimit":35},
-  {"name":"Geneva from Prague to Brookdale","speedLimit":35},
-  {"name":"San Jose from Santa Ynez to  Ocean Ave","speedLimit":25},
-  {"name":"Mission from Ottawa to Allison","speedLimit":20},
-  {"name":"Alemany from Farragut to Naglee","speedLimit":35}
+  {
+    "name": "Fulton Street from 42nd to 43rd Ave",
+    "speedLimit": 25
+  },
+  {
+    "name": "Lincoln Way from 27th to 28th Ave",
+    "speedLimit": 30
+  },
+  {
+    "name": "Geary Blvd from 7th to 8th Ave",
+    "speedLimit": 25
+  },
+  {
+    "name": "Fulton St from 2nd Ave to Arguello Blvd",
+    "speedLimit": 25
+  },
+  {
+    "name": "Geary Blvd from Webster to Buchanan St",
+    "speedLimit": 30
+  },
+  {
+    "name": "Turk St from Van Ness Ave to Polk St",
+    "speedLimit": 20
+  },
+  {
+    "name": "Bay St from Octavia to Gough St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Franklin St from Union to Green St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Columbus Ave from Lombard to Greenwich St",
+    "speedLimit": 20
+  },
+  {
+    "name": "Broadway from Powell to Stockton St",
+    "speedLimit": 20
+  },
+  {
+    "name": "The Embarcadero from Green to Battery St",
+    "speedLimit": 30
+  },
+  {
+    "name": "Mission St from 8th to 9th St",
+    "speedLimit": 20
+  },
+  {
+    "name": "10th St from Harrison to Folsom St",
+    "speedLimit": 25
+  },
+  {
+    "name": "9th St from Bryant to Harrison St",
+    "speedLimit": 25
+  },
+  {
+    "name": "7th St from Harrison to Folsom St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Harrison St from 4th to 5th St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Bryant St from 2nd to 3rd St",
+    "speedLimit": 25
+  },
+  {
+    "name": "King St (EB only) from 4th to 5th St",
+    "speedLimit": 30
+  },
+  {
+    "name": "Market St from Danvers to Douglass St",
+    "speedLimit": 30
+  },
+  {
+    "name": "Guerrero St from 19th to 20th St",
+    "speedLimit": 25
+  },
+  {
+    "name": "16th St from Bryant St to Potrero Ave",
+    "speedLimit": 25
+  },
+  {
+    "name": "San Jose Ave from 29th to 30th St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Cesar Chavez St from Folsom to Harrison St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Cesar Chavez St from Indiana to Tennessee St",
+    "speedLimit": 25
+  },
+  {
+    "name": "3rd St (NB only) from Key to Jamestown Ave",
+    "speedLimit": 25
+  },
+  {
+    "name": "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave",
+    "speedLimit": 30
+  },
+  {
+    "name": "Geneva Ave from Prague St to Brookdale Ave",
+    "speedLimit": 30
+  },
+  {
+    "name": "Mission St from Ottawa Ave to Allison St",
+    "speedLimit": 20
+  },
+  {
+    "name": "Alemany Blvd from Farragut to Naglee Ave",
+    "speedLimit": 30
+  },
+  {
+    "name": "Ocean Ave from Frida Kahlo Way to Howth St",
+    "speedLimit": 25
+  },
+  {
+    "name": "San Jose Ave from Santa Ynez to Ocean Ave",
+    "speedLimit": 25
+  },
+  {
+    "name": "Monterey Blvd from Edna to Congo St",
+    "speedLimit": 25
+  },
+  {
+    "name": "Sloat Blvd from 41st Ave to Skyline Blvd",
+    "speedLimit": 30
+  }
 ]
