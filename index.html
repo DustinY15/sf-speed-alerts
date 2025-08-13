@@ -264,11 +264,34 @@
     </footer>
     <script>
         window.addEventListener('DOMContentLoaded', () => {
-            /* SW register (PWA) */
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register(`${BASE}/sw.js`).catch(e => {
-                    if (typeof DEV !== 'undefined' && DEV) console.warn('SW failed', e);
-                });
+            /* -------- BASE (must come first) -------- */ 
+            const REPO = 'sf-speed-alerts'; 
+            const path = location.pathname.replace(/\/+$/, ''); 
+            const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO); 
+            let BASE = onRepo ? ('/' + REPO) : ''; 
+            if (!BASE) { 
+                const parts = location.pathname.split('/'); 
+                const idx = parts.lastIndexOf(REPO); 
+                if (idx > -1) BASE = '/' + parts.slice(1, idx + 1).join('/'); 
+            } 
+            if (!BASE && document.currentScript?.src) { 
+                const u = new URL(document.currentScript.src, location.href); 
+                BASE = u.pathname.replace(/\/[^/]*$/, ''); 
+            } 
+            const DATA_BASE = `${BASE}/data`; 
+            /* -------- DEV toggle + visible badge -------- */ 
+            const DEV = /[?&]dev=1\b/.test(location.search); 
+            if (DEV) console.info('DEV mode active: shorter timers, logs, cache-bust.'); 
+            const devBadge = document.getElementById('devBadge'); 
+            if (DEV && devBadge) devBadge.classList.add('show'); 
+            /* Ensure manifest path matches BASE */ 
+            const man = document.querySelector('link[rel="manifest"]'); 
+            if (man) man.setAttribute('href', `${BASE}/manifest.json`); 
+            /* SW register (PWA) */ 
+            if ('serviceWorker' in navigator) { 
+                navigator.serviceWorker.register(`${BASE}/sw.js`).catch(e => { 
+                    if (DEV) console.warn('SW failed', e); 
+                }); 
             }
             try {
                 history.scrollRestoration = 'manual';
@@ -280,26 +303,7 @@
                 window.scrollTo(0, 0);
                 if (document.activeElement) document.activeElement.blur();
             }, { once:true });
-            /* -------- BASE (drop-in compromise) -------- */
-            const REPO = 'sf-speed-alerts';
-            const path = location.pathname.replace(/\/+$/, '');
-            const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO);
-            let BASE = onRepo ? ('/' + REPO) : '';
-            if (!BASE) {
-                const parts = location.pathname.split('/');
-                const idx = parts.lastIndexOf(REPO);
-                if (idx > -1) BASE = '/' + parts.slice(1, idx + 1).join('/');
-            }
-            if (!BASE && document.currentScript?.src) {
-                const u = new URL(document.currentScript.src, location.href);
-                BASE = u.pathname.replace(/\/[^/]*$/, '');
-            }
-            const DATA_BASE = `${BASE}/data`;
-            /* -------- DEV toggle + visible badge -------- */
-            const DEV = /[?&]dev=1\b/.test(location.search);
-            if (DEV) console.info('DEV mode active: shorter timers, logs, cache-bust.');
-            const devBadge = document.getElementById('devBadge');
-            if (DEV && devBadge) devBadge.classList.add('show');
+            const isMobile = /iPhone|Android/i.test(navigator.userAgent);
             /* -------- Background video (autoplay-safe) -------- */
             const bg = document.getElementById('bgvid');
             const srcEl = document.getElementById('bgvidSrc');
@@ -413,20 +417,41 @@
             }
             /* -------- Audio unlock + helpers -------- */
             const AUDIO_BASE = `${BASE}/images/audio/`;
+            const AudioUnlock = (() => {
+                let ctx = null, unlocked = false;
+                async function unlock(){
+                    if (unlocked) return true;
+                    try{
+                        ctx = ctx || new (window.AudioContext||window.webkitAudioContext)();
+                        await ctx.resume();
+                        const b = ctx.createBuffer(1, 1, ctx.sampleRate);
+                        const s = ctx.createBufferSource();
+                        s.buffer = b;
+                        s.connect(ctx.destination);
+                        s.start(0);
+                        unlocked = true;
+                    }catch{}
+                    return unlocked;
+                }
+                window.addEventListener('pointerdown', () => unlock(), { once:true, passive:true });
+                return { unlock, get unlocked(){ return unlocked; }, get ctx(){ return ctx; } };
+            })();
             /* -------- Beep (instant) -------- */ 
             const BEEP_URL = `${AUDIO_BASE}beep.mp3`; 
             let beepBuffer = null; // WebAudio decoded beep 
             let beepEl = null; // HTMLAudio fallback 
             async function prepareBeep(){ 
-                // Try WebAudio decode for ultra-low latency 
                 try{ 
-                    const res = await fetch(`${BEEP_URL}?v=${DEV ? Date.now() : ''}`, { cache:'force-cache' }); 
-                    const ab = await res.arrayBuffer(); 
-                    await AudioUnlock.unlock(); 
-                    const ctx = AudioUnlock.ctx; 
-                    beepBuffer = await ctx.decodeAudioData(ab); 
-                }catch{ 
-                    // Fallback: preloaded <audio> 
+                    if (typeof AudioUnlock !== 'undefined') { 
+                        const res = await fetch(`${BEEP_URL}?v=${DEV ? Date.now() : ''}`, { cache:'force-cache' }); 
+                        const ab = await res.arrayBuffer(); 
+                        await AudioUnlock.unlock(); 
+                        const ctx = AudioUnlock.ctx; 
+                        beepBuffer = await ctx.decodeAudioData(ab); 
+                    } else { 
+                        throw new Error('unlock not ready'); 
+                    } 
+                } catch { 
                     beepEl = new Audio(BEEP_URL); 
                     beepEl.preload = 'auto'; 
                     beepEl.crossOrigin = 'anonymous'; 
@@ -457,25 +482,6 @@
                 } 
             }
             prepareBeep();
-            const AudioUnlock = (() => {
-                let ctx = null, unlocked = false;
-                async function unlock(){
-                    if (unlocked) return true;
-                    try{
-                        ctx = ctx || new (window.AudioContext||window.webkitAudioContext)();
-                        await ctx.resume();
-                        const b = ctx.createBuffer(1, 1, ctx.sampleRate);
-                        const s = ctx.createBufferSource();
-                        s.buffer = b;
-                        s.connect(ctx.destination);
-                        s.start(0);
-                        unlocked = true;
-                    }catch{}
-                    return unlocked;
-                }
-                window.addEventListener('pointerdown', () => unlock(), { once:true, passive:true });
-                return { unlock, get unlocked(){ return unlocked; }, get ctx(){ return ctx; } };
-            })();
             async function ensureAudioReady(){
                 try{
                     await AudioUnlock.unlock();
@@ -487,7 +493,9 @@
             }
             window.addEventListener('touchend', () => AudioUnlock.unlock(), { once:true, passive:true });
             let player = new Audio();
-            function isStandalone(){ return window.matchMedia && window.matchMedia('(display-mode: standalone)').matches; }
+            function isStandalone(){ 
+                return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (window.navigator && window.navigator.standalone === true); 
+            } 
             async function playNow(url){
                 if (mode === 'mute') return;
                 if (document.visibilityState !== 'visible' && !isStandalone()) {
@@ -662,7 +670,7 @@
                 for (const f of (fc?.features||[])) {
                     const t = f?.geometry?.type || '';
                     if (t.includes('Line')) {
-                        const buf = turf.buffer(f, 0.03, { units: 'kilometers' }); // ~30 m
+                        const buf = turf.buffer(f, 0.02, { units: 'kilometers' }); // ~20 m
                         if (buf?.type === 'FeatureCollection') (buf.features||[]).forEach(bf => out.push(bf));
                         else if (buf) out.push(buf);
                     } else if (t === 'Polygon' || t === 'MultiPolygon') {
@@ -799,6 +807,7 @@
                 val.textContent = String(toShow);
                 box.hidden = false;
                 box.classList.add('show');
+                if (mode === 'on') playBeep();
                 clearTimeout(speedSignTO);
                 speedSignTO = setTimeout(hideSpeedSign, SPEED_SIGN_MS);
             }
@@ -817,6 +826,7 @@
             const MIN_SPEED_MPS = 2.2;
             const COOLDOWN_MS = 10000;
             const REARM_M = DEV ? 50 : 100;
+            const PREARM_EXTRA_M = 120;
             function enterDistanceM(speedMps){
                 const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 24.6; // ~55 mph fallback
                 // generous lead: ~18x speed, clamped to 250–700 m
@@ -860,7 +870,7 @@
                     const now=Date.now();
                     for(const cam of cameras){
                         const dM = distKm(latitude, longitude, cam.lat, cam.lon)*1000;
-                        const nearPoint = dM <= enterDistanceM(pos.coords.speed);
+                        const nearPoint = dM <= Math.max(enterDistanceM(pos.coords.speed), PREARM_EXTRA_M);
                         const inZone = nearPoint || (inCorridor && (nearestName === cam.name));
                         const wasIn = insideNow.has(cam.name);
                         const movedEnough = (() => {
@@ -1116,7 +1126,7 @@
             })();
             function buildAudioUrls(){
                 const urls = [];
-                urls.push(`${AUDIO_BASE}beep.mp3`);
+                urls.push(`${AUDIO_BASE}beep.mp3`); // <-- add this line
                 for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
                 for (const t of TAGS) urls.push(`${AUDIO_BASE}${t}`);
                 Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`));
