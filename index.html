@@ -277,6 +277,37 @@
     </footer>
     <script>
         window.addEventListener('DOMContentLoaded', () => {
+            // --- speedwarn.com hardening: HTTPS + one-time SW/cache cleanup ---
+(function () {
+  const IS_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
+  const IS_SPEEDWARN = /(^|\.)speedwarn\.com$/i.test(location.hostname);
+  if (!IS_LOCAL && location.protocol !== 'https:' && IS_SPEEDWARN) {
+    // Force HTTPS for Geolocation + autoplay reliability
+    location.replace('https:' + location.href.slice(location.protocol.length));
+    return; // stop here; page will reload over HTTPS
+  }
+
+  // One-time cleanup only on speedwarn.com to remove stale SW/caches from older builds
+  const FLAG = 'sw_cleanup_v3'; // bump if you ever need to trigger again
+  if (!IS_SPEEDWARN || sessionStorage.getItem(FLAG)) return;
+
+  (async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(regs.map(r => r.unregister()));
+      }
+      if ('caches' in window) {
+        const names = await caches.keys();
+        await Promise.all(names.map(n => caches.delete(n)));
+      }
+    } catch {}
+    sessionStorage.setItem(FLAG, '1');
+    // Single hard reload to fetch fresh files; then your normal SW registers as usual
+    location.replace(location.href.split('#')[0]);
+  })();
+})();
+
             // Bring globals into local constants for convenience
             const BASE = window.BASE || '';
             const DATA_BASE = window.DATA_BASE || `${BASE}/data`;
