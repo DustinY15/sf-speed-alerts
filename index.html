@@ -1,1296 +1,1026 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-    <meta name="format-detection" content="telephone=no,address=no,email=no">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black">
-    <link rel="apple-touch-icon" href="icons/icon-192.png">
-    <link rel="manifest" id="app-manifest" href="">
-    <script> 
-        (function () { 
-            const REPO = 'sf-speed-alerts'; 
-            const path = location.pathname.replace(/\/+$/, ''); 
-            const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO); 
-            let base = onRepo ? ('/' + REPO) : ''; 
-            if (!base) { 
-                const parts = location.pathname.split('/'); 
-                const idx = parts.lastIndexOf(REPO); 
-                if (idx > -1) base = '/' + parts.slice(1, idx + 1).join('/'); 
-            } 
-            window.BASE = base; 
-            window.DATA_BASE = `${base}/data`; 
-            window.DEV = /[?&]dev=1\b/.test(location.search); 
-            const m = document.getElementById('app-manifest'); 
-            if (m) m.setAttribute('href', `${base}/manifest.json`); 
-        })(); 
-    </script>
-    <title>SF Speed Cameras - Alerts & Map</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-    <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script defer src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
-    <link rel="preload" as="audio" href="images/audio/Ad1.mp3" type="audio/mpeg">
-    <link rel="preload" as="audio" href="images/audio/beep.mp3" type="audio/mpeg">
-    <style>
-        :root{
-            --paid-offset-mobile: 220px;
-            --paid-offset-desktop: 330px;
-            --overlay-top: 10px;
-            --shell-max: 520px;
-            --overlay-paid-offset: -36px;
-        }
-        html, body { height:100%; }
-        body{
-            margin:0;
-            background:#0b0b0b;
-            color:#fff;
-            font-family:system-ui,-apple-system,Arial;
-            font-weight:600;
-            display:flex;
-            flex-direction:column;
-            overflow-x:hidden;
-        }
-        .page { flex:1 0 auto; position:relative; }
-        footer { flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center; }
-        .video-bg{
-            position:fixed;
-            left:0;
-            top:0;
-            width:100vw;
-            height:100dvh;
-            z-index:-3;
-            overflow:hidden;
-        }
-        .video-bg video{
-            position:absolute;
-            inset:0;
-            width:100%;
-            height:100%;
-            object-fit:cover;
-            object-position:center center;
-        }
-        .overlay-layer{
-            position:absolute;
-            left:0;
-            top:var(--overlay-top);
-            width:100%;
-            z-index:2;
-            pointer-events:none;
-        }
-        .overlay-layer img{
-            width:100%;
-            height:auto;
-            display:block;
-        }
-        #ovPaidImg{
-            transform:translateY(var(--overlay-paid-offset));
-            will-change:transform;
-        }
-        .content-wrap{
-            position:relative;
-            padding:16px 20px 24px;
-            z-index:3;
-            margin-top:var(--paid-offset-mobile);
-        }
-        @media (min-width:1200px){ .content-wrap{ margin-top:var(--paid-offset-desktop);} }
-        .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
-        .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
-        #warmup.btn-off { background:#b02a37; border-color:#b02a37; color:#fff; }
-        #warmup.btn-on { background:#198754; border-color:#198754; color:#fff; }
-        #warmup.btn-mute { background:#b89b00; border-color:#b89b00; color:#111; }
-        #map{ height:60vh; border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85); }
-        @media (max-width:1200px){ #map{ height:50vh; } }
-        .camera-list{ max-height:200px; overflow-y:auto; }
-        @media (max-width:430px){
-            #map{ height:52vh; }
-            .camera-list{ max-height:180px; }
-            .content-wrap{ margin-top:var(--paid-offset-mobile); }
-        }
-        .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
-        .speed-sign {
-            position:fixed;
-            left:50%;
-            top:12px;
-            transform:translateX(-50%) translateY(-20px);
-            z-index:70;
-            pointer-events:none;
-            opacity:0;
-            transition:opacity .2s, transform .25s;
-        }
-        .speed-sign.show { opacity:1; transform:translateX(-50%) translateY(0); }
-        .speed-sign .sign{
-            background:#fff;
-            color:#000;
-            border:4px solid #000;
-            border-radius:10px;
-            width:min(46vw, 280px);
-            padding:10px 14px 12px;
-            box-shadow:0 10px 30px rgba(0,0,0,.35);
-        }
-        .speed-sign .label{ font-weight:800; letter-spacing:.06em; text-align:center; font-size:14px; margin-bottom:4px; }
-        .speed-sign .value{ font-weight:900; text-align:center; font-size:clamp(56px, 16vw, 110px); line-height:1; }
-        .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
-        .speed-sign.unknown .capsule{ display:inline-block; }
-        /* Dim the sign when using fallback MPH */
-        .speed-sign.fallback .sign { opacity:.85; }
-        .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:60; }
-        .nag-wrap{ position:relative; transform:translateY(30px); }
-        .nag-img{ max-width:min(90vw, 540px); border-radius:14px; box-shadow:0 25px 60px rgba(0,0,0,.55); }
-        .nag-count{ position:absolute; bottom:10px; right:14px; background:rgba(0,0,0,.6); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800; }
-        .leaflet-popup-content a{ text-decoration:none; pointer-events:none; color:inherit; }
-        .dev-badge {
-            position: fixed;
-            left: 10px;
-            bottom: 10px;
-            z-index: 9999;
-            background: #8b5cf6;
-            color:#fff;
-            padding:6px 10px;
-            border-radius:999px;
-            font: 700 12px/1 system-ui, -apple-system, Arial;
-            box-shadow:0 6px 18px rgba(0,0,0,.35);
-            display:none;
-        }
-        .dev-badge.show { display:inline-block; }
-        /* Toast container */
-        .toast-container {
-            position: fixed;
-            right: 12px;
-            bottom: calc(12px + env(safe-area-inset-bottom));
-            z-index: 10000;
-        }
-    </style>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"/>
+  <meta name="format-detection" content="telephone=no,address=no,email=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="manifest" id="app-manifest" href="">
+
+  <!-- Base path helper for GitHub Pages and subfolders -->
+  <script>
+    (function () {
+      const REPO = 'sf-speed-alerts';
+      const path = location.pathname.replace(/\/+$/, '');
+      const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO);
+      let base = onRepo ? ('/' + REPO) : '';
+      if (!base) {
+        const parts = location.pathname.split('/');
+        const idx = parts.lastIndexOf(REPO);
+        if (idx > -1) base = '/' + parts.slice(1, idx + 1).join('/');
+      }
+      window.BASE = base;
+      window.DATA_BASE = `${base}/data`;
+      window.DEV = /[?&]dev=1\b/.test(location.search);
+      const m = document.getElementById('app-manifest');
+      if (m) m.setAttribute('href', `${base}/manifest.json`);
+    })();
+  </script>
+
+  <!-- Force HTTPS + real viewport height + lift -->
+  <script>
+    if (location.protocol !== 'https:' && location.hostname && location.hostname !== 'localhost') {
+      location.replace('https://' + location.host + location.pathname + location.search + location.hash);
+    }
+    (function setVH(){
+      function apply(){
+        var h = Math.round(window.visualViewport?.height || window.innerHeight);
+        document.documentElement.style.setProperty('--vhpx', h + 'px');
+      }
+      apply();
+      addEventListener('resize', apply, {passive:true});
+      window.visualViewport && window.visualViewport.addEventListener('resize', apply, {passive:true});
+      addEventListener('orientationchange', () => setTimeout(apply, 60), {passive:true});
+    })();
+  </script>
+  <style>
+    :root{
+      --paid-offset-mobile: 220px;
+      --paid-offset-desktop: 330px;
+      --overlay-top: 10px;
+      --shell-max: 520px;
+      --overlay-paid-offset: -36px;
+      --lift-offset: 400px; /* move content up ~400px */
+    }
+    html, body { height:100%; }
+    body{
+      margin:0;
+      background:#0b0b0b;
+      color:#fff;
+      font-family:system-ui,-apple-system,Arial;
+      font-weight:600;
+      display:flex;
+      flex-direction:column;
+      overflow-x:hidden;
+    }
+    .page { flex:1 0 auto; position:relative; }
+    footer { flex:0 0 auto; padding:14px 0 calc(18px + env(safe-area-inset-bottom)); text-align:center; }
+    .video-bg{
+      position:fixed;
+      left:0; top:0;
+      width:100vw;
+      height: var(--vhpx) !important; /* kill the gap/zoomed-out feel */
+      z-index:-3;
+      overflow:hidden;
+    }
+    .video-bg video{
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:cover; object-position:center center;
+    }
+    .overlay-layer{
+      position:absolute; left:0; top:var(--overlay-top); width:100%; z-index:2; pointer-events:none;
+    }
+    .overlay-layer img{ width:100%; height:auto; display:block; }
+    #ovPaidImg{ transform:translateY(var(--overlay-paid-offset)); will-change:transform; }
+
+    .content-wrap{
+      position:relative; padding:16px 20px 24px; z-index:3;
+      margin-top: calc(var(--paid-offset-mobile) - var(--lift-offset)); /* pull it up */
+    }
+    @media (min-width:1200px){
+      .content-wrap{ margin-top: calc(var(--paid-offset-desktop) - var(--lift-offset)); }
+    }
+
+    .app-shell{ width:min(92vw, var(--shell-max)); margin:0 auto; }
+    .btn-match{ line-height:1.25; padding:.55rem 1rem; font-weight:700; }
+    #warmup.btn-off { background:#b02a37; border-color:#b02a37; color:#fff; }
+    #warmup.btn-on  { background:#198754; border-color:#198754; color:#fff; }
+    #warmup.btn-mute{ background:#b89b00; border-color:#b89b00; color:#111; }
+
+    /* Readable map height on large phones + desktop */
+    #map{
+      height: calc((var(--vhpx, 700px)) * 0.60) !important;
+      border:1px solid #ddd; border-radius:8px; background:rgba(255,255,255,.85);
+    }
+    @media (max-width:1200px){
+      #map{ height: calc((var(--vhpx, 700px)) * 0.56) !important; }
+    }
+    .camera-list{ max-height:220px; overflow-y:auto; }
+
+    .loc-dot{ width:14px; height:14px; border-radius:50%; background:#2a6bf4; border:2px solid #fff; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
+
+    .speed-sign {
+      position:fixed; left:50%; top:12px;
+      transform:translateX(-50%) translateY(-20px);
+      z-index:70; pointer-events:none; opacity:0;
+      transition:opacity .2s, transform .25s;
+    }
+    .speed-sign.show { opacity:1; transform:translateX(-50%) translateY(0); }
+    .speed-sign .sign{
+      background:#fff; color:#000; border:4px solid #000; border-radius:10px;
+      width:min(46vw, 280px); padding:10px 14px 12px;
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+    }
+    .speed-sign .label{ font-weight:800; letter-spacing:.06em; text-align:center; font-size:14px; margin-bottom:4px; }
+    .speed-sign .value{ font-weight:900; text-align:center; font-size:clamp(56px, 16vw, 110px); line-height:1; }
+    .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
+    .speed-sign.unknown .capsule{ display:inline-block; }
+    .speed-sign.fallback .sign { opacity:.85; }
+
+    .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:60; }
+    .nag-wrap{ position:relative; transform:translateY(30px); }
+    .nag-img{ max-width:min(90vw, 540px); border-radius:14px; box-shadow:0 25px 60px rgba(0,0,0,.55); }
+    .nag-count{ position:absolute; bottom:10px; right:14px; background:rgba(0,0,0,.6); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800; }
+    .leaflet-popup-content a{ text-decoration:none; pointer-events:none; color:inherit; }
+
+    .dev-badge {
+      position: fixed; left: 10px; bottom: 10px; z-index: 9999;
+      background: #8b5cf6; color:#fff; padding:6px 10px; border-radius:999px;
+      font: 700 12px/1 system-ui, -apple-system, Arial; box-shadow:0 6px 18px rgba(0,0,0,.35);
+      display:none;
+    }
+    .dev-badge.show { display:inline-block; }
+
+    .toast-container {
+      position: fixed; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 10000;
+    }
+  </style>
+
+  <title>SF Speed Cameras - Alerts & Map</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <script defer src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script defer src="https://unpkg.com/@turf/turf@6.5.0/turf.min.js"></script>
+  <link rel="preload" as="audio" href="images/audio/Ad1.mp3" type="audio/mpeg">
+  <link rel="preload" as="audio" href="images/audio/beep.mp3" type="audio/mpeg">
 </head>
 <body>
-    <div class="video-bg" aria-hidden="true">
-        <video id="bgvid" autoplay loop muted playsinline preload="auto" crossorigin="anonymous" poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
-            <source id="bgvidSrc" src="" type="video/mp4">
-        </video>
+  <div class="video-bg" aria-hidden="true">
+    <video id="bgvid" autoplay loop muted playsinline preload="auto" crossorigin="anonymous" poster="https://via.placeholder.com/1920x1080?text=Loading+Video">
+      <source id="bgvidSrc" src="" type="video/mp4">
+    </video>
+  </div>
+
+  <div class="overlay-layer" id="overlay" aria-hidden="true">
+    <picture id="overlay-paid">
+      <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
+      <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)" decoding="async" fetchpriority="low">
+    </picture>
+  </div>
+
+  <div class="page">
+    <div class="content-wrap">
+      <div class="app-shell">
+        <div class="d-flex gap-2 align-items-center mb-3">
+          <a id="payCTA" class="btn btn-primary btn-match" href="#" aria-label="Upgrade to Pro" rel="noopener">Go Pro</a>
+          <button id="warmup" class="btn btn-match btn-off" aria-pressed="false" aria-live="polite">Sound &amp; GPS: Off</button>
+          <button id="testSound" class="btn btn-secondary btn-match" style="display:none">Test Sound</button>
+        </div>
+
+        <div id="map" class="mb-3" tabindex="-1"></div>
+
+        <div id="list" class="card mb-3">
+          <div class="card-header">Camera Locations</div>
+          <ul class="list-group camera-list" role="listbox" aria-label="Speed camera list"></ul>
+        </div>
+      </div>
     </div>
-    <div class="overlay-layer" id="overlay" aria-hidden="true">
-        <picture id="overlay-paid">
-            <source id="ovPaidSrcM" media="(max-width: 1200px)" srcset="">
-            <img id="ovPaidImg" src="" alt="SF Speed Cameras (Paid)" decoding="async" fetchpriority="low">
-        </picture>
+  </div>
+
+  <div id="speedSign" class="speed-sign" aria-live="polite" hidden>
+    <div class="sign">
+      <div class="label">SPEED LIMIT</div>
+      <div class="value" id="speedLimitValue">--</div>
+      <div class="capsule">SPEED CAMERA ZONE</div>
     </div>
-    <div class="page">
-        <div class="content-wrap">
-            <div class="app-shell">
-                <div class="d-flex gap-2 align-items-center mb-3">
-                    <a id="payCTA" class="btn btn-primary btn-match" href="#" aria-label="Upgrade to Pro" rel="noopener">Go Pro</a>
-                    <button id="warmup" class="btn btn-match btn-off" aria-pressed="false" aria-live="polite">Sound &amp; GPS: Off</button>
-                    <button id="testSound" class="btn btn-secondary btn-match" style="display:none">Test Sound</button>
-                </div>
-                <div id="map" class="mb-3" tabindex="-1"></div>
-                <div id="list" class="card mb-3">
-                    <div class="card-header">Camera Locations</div>
-                    <ul class="list-group camera-list" role="listbox" aria-label="Speed camera list"></ul>
-                </div>
+  </div>
+
+  <div id="nag" class="nag-backdrop" role="dialog" aria-modal="true" aria-labelledby="nagCountdown" aria-hidden="true">
+    <div class="nag-wrap">
+      <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt" decoding="async">
+      <div id="nagCountdown" class="nag-count">25</div>
+    </div>
+  </div>
+
+  <div id="devBadge" class="dev-badge">DEV BUILD</div>
+
+  <!-- Privacy Modal -->
+  <div class="modal fade" id="privacyModal" tabindex="-1" aria-hidden="true" aria-labelledby="privacyTitle">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark text-light">
+        <div class="modal-header border-0">
+          <h5 class="modal-title" id="privacyTitle">Privacy Policy & First-Time Setup</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" id="privacyClose"></button>
+        </div>
+        <div class="modal-body">
+          <p class="mb-2">We only process your location on your device to trigger nearby speed-camera alerts. We do <strong>not</strong> upload or store your GPS data on our servers.</p>
+          <ul>
+            <li>Location: used live on your phone for geofencing.</li>
+            <li>Sound: alerts play on the device (tap to enable the first time).</li>
+          </ul>
+          <p class="small mb-2">Read our full policy: <a id="privacyLink" href="/privacy.html" target="_blank" rel="noopener">Privacy Policy (opens in new tab) →</a></p>
+          <div id="privacyFallback" class="small text-secondary d-none">
+            <hr class="border-secondary">
+            <p><strong>Quick Summary:</strong> No account, no tracking, no ads networks. Location is processed locally; optional analytics (if enabled later) are anonymous and opt-in.</p>
+          </div>
+          <div class="alert alert-secondary d-flex align-items-center gap-2 py-2 px-3 mb-0">
+            <div>
+              <div class="fw-bold">Enable GPS & Sound</div>
+              <div class="small">Tap “Enable” so alerts can play and your phone can detect nearby cameras.</div>
             </div>
+            <button id="privacyEnable" class="btn btn-success btn-sm ms-auto">Enable</button>
+            <button id="privacyLater" class="btn btn-outline-light btn-sm">Not now</button>
+          </div>
+          <div id="privacyConfirm" class="text-success fw-bold mt-2 d-none">GPS & Sound ready ✅</div>
         </div>
+      </div>
     </div>
-    <div id="speedSign" class="speed-sign" aria-live="polite" hidden>
-        <div class="sign">
-            <div class="label">SPEED LIMIT</div>
-            <div class="value" id="speedLimitValue">--</div>
-            <div class="capsule">SPEED CAMERA ZONE</div>
+  </div>
+
+  <!-- iOS Install Modal -->
+  <div class="modal fade" id="iosInstall" tabindex="-1" aria-labelledby="iosInstallLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content bg-dark text-light">
+        <div class="modal-header border-0">
+          <h5 class="modal-title" id="iosInstallLabel">Install to Home Screen</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" id="iosClose"></button>
         </div>
+        <div class="modal-body">
+          <p class="mb-2">For quicker launches and more reliable GPS/audio on iPhone, add this app to your Home Screen:</p>
+          <ol class="ps-3">
+            <li>Tap the <strong>Share</strong> icon in Safari’s toolbar.</li>
+            <li>Choose <strong>Add to Home Screen</strong>.</li>
+          </ol>
+          <img id="iosGuideImg" src="images/ios-add-to-home.png" alt="How to add to Home Screen on iOS" class="img-fluid rounded border border-secondary" onerror="this.classList.add('d-none')">
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="iosDone">Done</button>
+        </div>
+      </div>
     </div>
-    <div id="nag" class="nag-backdrop" role="dialog" aria-modal="true" aria-labelledby="nagCountdown" aria-hidden="true">
-        <div class="nag-wrap">
-            <img id="nagImg" class="nag-img" src="" alt="Upgrade prompt" decoding="async">
-            <div id="nagCountdown" class="nag-count">25</div>
-        </div>
+  </div>
+
+  <!-- Toasts -->
+  <div class="toast-container p-2">
+    <div id="privacyToast" class="toast text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="6000">
+      <div class="toast-body d-flex align-items-center gap-2">
+        <span>Set up privacy & permissions?</span>
+        <button class="btn btn-sm btn-primary" id="toastEnable">Enable</button>
+        <button class="btn btn-sm btn-outline-light" id="toastLater">Later</button>
+      </div>
     </div>
-    <div id="devBadge" class="dev-badge">DEV BUILD</div>
-    <!-- Privacy Modal -->
-    <div class="modal fade" id="privacyModal" tabindex="-1" aria-hidden="true" aria-labelledby="privacyTitle">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content bg-dark text-light">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title" id="privacyTitle">Privacy Policy & First-Time Setup</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" id="privacyClose"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-2">We only process your location on your device to trigger nearby speed-camera alerts. We do <strong>not</strong> upload or store your GPS data on our servers.</p>
-                    <ul>
-                        <li>Location: used live on your phone for geofencing.</li>
-                        <li>Sound: alerts play on the device (tap to enable the first time).</li>
-                    </ul>
-                    <p class="small mb-2">Read our full policy: <a id="privacyLink" href="/privacy.html" target="_blank" rel="noopener">Privacy Policy (opens in new tab) →</a></p>
-                    <div id="privacyFallback" class="small text-secondary d-none">
-                        <hr class="border-secondary">
-                        <p><strong>Quick Summary:</strong> No account, no tracking, no ads networks. Location is processed locally; optional analytics (if enabled later) are anonymous and opt-in.</p>
-                    </div>
-                    <div class="alert alert-secondary d-flex align-items-center gap-2 py-2 px-3 mb-0">
-                        <div>
-                            <div class="fw-bold">Enable GPS & Sound</div>
-                            <div class="small">Tap “Enable” so alerts can play and your phone can detect nearby cameras.</div>
-                        </div>
-                        <button id="privacyEnable" class="btn btn-success btn-sm ms-auto">Enable</button>
-                        <button id="privacyLater" class="btn btn-outline-light btn-sm">Not now</button>
-                    </div>
-                    <div id="privacyConfirm" class="text-success fw-bold mt-2 d-none">GPS & Sound ready ✅</div>
-                </div>
-            </div>
-        </div>
+    <div id="installToast" class="toast text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="6000">
+      <div class="toast-body d-flex align-items-center gap-2">
+        <span>Install for one-tap access?</span>
+        <button class="btn btn-sm btn-primary" id="toastInstall">Add</button>
+        <button class="btn btn-sm btn-outline-light" id="toastInstallLater">Later</button>
+      </div>
     </div>
-    <!-- iOS Install Modal -->
-    <div class="modal fade" id="iosInstall" tabindex="-1" aria-labelledby="iosInstallLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content bg-dark text-light">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title" id="iosInstallLabel">Install to Home Screen</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close" id="iosClose"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="mb-2">For quicker launches and more reliable GPS/audio on iPhone, add this app to your Home Screen:</p>
-                    <ol class="ps-3">
-                        <li>Tap the <strong>Share</strong> icon in Safari’s toolbar.</li>
-                        <li>Choose <strong>Add to Home Screen</strong>.</li>
-                    </ol>
-                    <img id="iosGuideImg" src="images/ios-add-to-home.png" alt="How to add to Home Screen on iOS" class="img-fluid rounded border border-secondary" onerror="this.classList.add('d-none')">
-                </div>
-                <div class="modal-footer border-0">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal" id="iosDone">Done</button>
-                </div>
-            </div>
-        </div>
-    </div>
-    <!-- Toasts -->
-    <div class="toast-container p-2">
-        <div id="privacyToast" class="toast text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="6000">
-            <div class="toast-body d-flex align-items-center gap-2">
-                <span>Set up privacy & permissions?</span>
-                <button class="btn btn-sm btn-primary" id="toastEnable">Enable</button>
-                <button class="btn btn-sm btn-outline-light" id="toastLater">Later</button>
-            </div>
-        </div>
-        <div id="installToast" class="toast text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="6000">
-            <div class="toast-body d-flex align-items-center gap-2">
-                <span>Install for one-tap access?</span>
-                <button class="btn btn-sm btn-primary" id="toastInstall">Add</button>
-                <button class="btn btn-sm btn-outline-light" id="toastInstallLater">Later</button>
-            </div>
-        </div>
-    </div>
-    <footer>
-        <small>&copy; 2025 SF Speed Cameras • <a href="/privacy.html" class="text-white-50" target="_blank" rel="noopener">Privacy</a> • <a href="/contact.html" class="text-white-50" target="_blank" rel="noopener">Contact</a></small>
-    </footer>
-    <script>
-        window.addEventListener('DOMContentLoaded', () => {
-            // Bring globals into local constants for convenience
-            const BASE = window.BASE || '';
-            const DATA_BASE = window.DATA_BASE || `${BASE}/data`;
-            const DEV = !!window.DEV;
-            // Fix footer & modal links to respect BASE
-            document.querySelectorAll('a[href="/privacy.html"]').forEach(a => a.href = `${BASE}/privacy.html`);
-            document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
-            const plEl = document.getElementById('privacyLink');
-            if (plEl) plEl.href = `${BASE}/privacy.html`;
-            // Register service worker (for PWA/offline)
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register(`${BASE}/sw.js`).catch(e => {
-                    if (DEV) console.warn('SW failed', e);
-                });
+  </div>
+
+  <footer>
+    <small>&copy; 2025 SF Speed Cameras • <a href="/privacy.html" class="text-white-50" target="_blank" rel="noopener">Privacy</a> • <a href="/contact.html" class="text-white-50" target="_blank" rel="noopener">Contact</a></small>
+  </footer>
+
+  <script>
+  window.addEventListener('DOMContentLoaded', () => {
+    const BASE = window.BASE || '';
+    const DATA_BASE = window.DATA_BASE || `${BASE}/data`;
+    const DEV = !!window.DEV;
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    document.querySelectorAll('a[href="/privacy.html"]').forEach(a => a.href = `${BASE}/privacy.html`);
+    document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
+    const plEl = document.getElementById('privacyLink'); if (plEl) plEl.href = `${BASE}/privacy.html`;
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register(`${BASE}/sw.js`).catch(e => { if (DEV) console.warn('SW failed', e); });
+    }
+    document.getElementById('devBadge')?.classList.toggle('show', DEV);
+    try { history.scrollRestoration = 'manual'; } catch {}
+    if (location.hash) { history.replaceState(null, '', location.pathname); }
+    window.addEventListener('load', () => { window.scrollTo(0, 0); document.activeElement?.blur?.(); }, { once: true });
+
+    /* Background video */
+    const bg = document.getElementById('bgvid'), srcEl = document.getElementById('bgvidSrc');
+    if (bg && srcEl) {
+      bg.muted = true; bg.setAttribute('muted', ''); bg.setAttribute('playsinline',''); bg.setAttribute('webkit-playsinline','');
+      srcEl.src = `${BASE}/videos/background.mp4`; bg.load();
+      const retryPlay = () => { const p = bg.play(); if (p && p.catch) p.catch(() => setTimeout(() => bg.play().catch(()=>{}), 100)); };
+      bg.addEventListener('loadeddata', () => bg.removeAttribute('poster'), { once:true }); retryPlay();
+    }
+
+    /* Overlay + dynamic spacing */
+    const ovM = document.getElementById('ovPaidSrcM'); if (ovM) ovM.srcset = `${BASE}/images/Copyblockmobile_paid.png`;
+    const paidImg = document.getElementById('ovPaidImg');
+    function applyOverlaySpacing() {
+      const root = document.documentElement;
+      const topPx = parseFloat(getComputedStyle(root).getPropertyValue('--overlay-top')) || 0;
+      const paidOffset = parseFloat(getComputedStyle(root).getPropertyValue('--overlay-paid-offset')) || 0;
+      const ph = paidImg?.getBoundingClientRect().height || 0;
+      const measured = ph ? Math.round(ph + topPx + paidOffset) : 220;
+      const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+      const anchor = IS_IOS ? Math.round((window.visualViewport?.height || window.innerHeight) * 0.46) : 0;
+      const mt = Math.max(measured, anchor);
+      root.style.setProperty('--paid-offset-mobile', `${mt}px`);
+      root.style.setProperty('--paid-offset-desktop', `${Math.max(mt, 330)}px`);
+      invalidateMapSizeSoon();
+      if (DEV) console.info('[DEV] overlay h:', ph, 'measured:', measured, 'anchor:', anchor, 'margin-top:', mt);
+    }
+    if (paidImg){
+      paidImg.src = `${BASE}/images/Copyblockdesktop_paid.png`;
+      paidImg.addEventListener('load', () => {
+        paidImg.style.transform = `translateY(var(--overlay-paid-offset))`;
+        requestAnimationFrame(() => requestAnimationFrame(applyOverlaySpacing));
+      }, { once: true });
+    }
+    applyOverlaySpacing();
+    let ovRzT; const reflowOverlay = () => { clearTimeout(ovRzT); ovRzT = setTimeout(applyOverlaySpacing, 100); };
+    addEventListener('resize', reflowOverlay, { passive:true });
+    addEventListener('orientationchange', reflowOverlay);
+    window.visualViewport && window.visualViewport.addEventListener('resize', reflowOverlay, { passive:true });
+
+    /* Stripe CTA */
+    const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
+    document.getElementById('payCTA')?.addEventListener('click', (e) => { e.preventDefault(); window.open(STRIPE_URL, '_blank', 'noopener,noreferrer'); });
+
+    /* Debug badge + fetch helper */
+    function showDebug(msg, isErr = false) {
+      let el = document.getElementById('debugBadge');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'debugBadge'; el.setAttribute('role','status');
+        el.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:9999;padding:8px 10px;border-radius:8px;background:#111;color:#fff;font:600 12px system-ui;opacity:.9';
+        document.body.appendChild(el);
+      }
+      el.style.background = isErr ? '#8b0000' : '#111';
+      el.textContent = msg;
+    }
+    async function fetchJSON(url) {
+      const sep = url.includes('?') ? '&' : '?';
+      const r = await fetch(`${url}${sep}v=${Date.now()}`, { cache: 'no-store' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    }
+
+    /* Map */
+    let map, userMarker, __firstLock = true;
+    const poleLayer = L.layerGroup();
+    const areaLayer = L.layerGroup();
+    const corridorPolys = [];
+    function initMap() {
+      map = L.map('map', { zoomControl: true }).setView([37.7749, -122.4194], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
+      poleLayer.addTo(map);
+      areaLayer.addTo(map);
+      document.querySelector('.camera-list')?.setAttribute('role', 'listbox');
+      const dot = L.divIcon({ className: 'loc-dot' });
+      userMarker = L.marker([37.7749, -122.4194], { icon: dot });
+      invalidateMapSizeSoon();
+    }
+    initMap();
+
+    /* Make Leaflet recalc size after viewport changes */
+    const invalidateMapSize = () => { try { map.invalidateSize(false); } catch {} };
+    const invalidateMapSizeSoon = () => setTimeout(invalidateMapSize, 100);
+    addEventListener('resize', () => setTimeout(invalidateMapSize, 200), { passive:true });
+    addEventListener('orientationchange', () => setTimeout(invalidateMapSize, 300), { passive:true });
+    window.visualViewport && window.visualViewport.addEventListener('resize', () => setTimeout(invalidateMapSize, 200), { passive:true });
+
+    /* Audio unlock + small beep for speed sign */
+    const AUDIO_BASE = `${BASE}/images/audio/`;
+    const AudioUnlock = (() => {
+      let ctx = null, unlocked = false;
+      async function unlock() {
+        if (unlocked) return true;
+        try {
+          ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+          await ctx.resume();
+          const b = ctx.createBuffer(1, 1, ctx.sampleRate);
+          const s = ctx.createBufferSource(); s.buffer = b; s.connect(ctx.destination); s.start(0);
+          unlocked = true;
+        } catch {}
+        return unlocked;
+      }
+      addEventListener('pointerdown', () => unlock(), { once:true, passive:true });
+      return { unlock, get unlocked(){return unlocked;}, get ctx(){return ctx;} };
+    })();
+    const BEEP_URL = `${AUDIO_BASE}beep.mp3`;
+    let beepBuffer = null, beepEl = null;
+    (async function prepareBeep(){
+      try {
+        await AudioUnlock.unlock();
+        const res = await fetch(`${BEEP_URL}?v=${Date.now()}`, { cache: 'force-cache' });
+        const ab = await res.arrayBuffer();
+        const ctx = AudioUnlock.ctx;
+        beepBuffer = await ctx.decodeAudioData(ab);
+      } catch {
+        beepEl = new Audio(BEEP_URL); beepEl.preload = 'auto'; beepEl.crossOrigin = 'anonymous'; try { beepEl.load(); } catch {}
+      }
+    })();
+    function maybeBeep() {
+      if (mode === 'mute') return;
+      if (beepBuffer && AudioUnlock.ctx) {
+        try {
+          const ctx = AudioUnlock.ctx, src = ctx.createBufferSource(), g = ctx.createGain();
+          g.gain.value = 0.09; src.buffer = beepBuffer; src.connect(g); g.connect(ctx.destination); src.start(0); return;
+        } catch {}
+      }
+      if (beepEl) { try { beepEl.currentTime = 0; } catch {}; beepEl.play().catch(()=>{}); }
+    }
+    async function ensureAudioReady() {
+      try { await AudioUnlock.unlock(); const ctx = AudioUnlock.ctx; if (ctx && ctx.state === 'suspended') await ctx.resume(); } catch {}
+    }
+    addEventListener('touchend', () => AudioUnlock.unlock(), { once:true, passive:true });
+    let player = new Audio();
+    function isStandalone() {
+      return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
+    }
+    async function playNow(url) {
+      if (mode === 'mute') return;
+      if (document.visibilityState !== 'visible' && !isStandalone()) { if (DEV) console.warn('Audio blocked: hidden'); return; }
+      await ensureAudioReady();
+      const u = url + (DEV ? ((url.includes('?') ? '&' : '?') + 'v=' + Date.now()) : '');
+      return new Promise((resolve) => {
+        try { player.pause(); } catch {}
+        player = new Audio(u); player.muted = false; player.preload='auto'; player.crossOrigin='anonymous'; player.playsInline = true;
+        let watchdogTO;
+        const arm = () => {
+          const ms = Math.min(30000, Math.max(15000, Number.isFinite(player.duration) ? (player.duration + 0.25) * 1000 : 15000));
+          clearTimeout(watchdogTO); watchdogTO = setTimeout(() => resolve(), ms);
+        };
+        player.onloadedmetadata = arm;
+        player.onended = () => { clearTimeout(watchdogTO); resolve(); };
+        player.onerror = () => { clearTimeout(watchdogTO); if (DEV) console.error('Audio error:', u); resolve(); };
+        arm();
+        player.play().catch(() => { clearTimeout(watchdogTO); resolve(); });
+      });
+    }
+
+    /* Audio lists (stems/tags/locations) */
+    const STEMS = Array.from({ length: 11 }, (_, i) => `speed_camera_ahead_${i + 1}.mp3`);
+    const TAGS = [
+      'your_wallet_just_got_a_little_nervous.mp3','your_best_pose_is_slow.mp3','your_brakes_called_they_are_ready_to_help.mp3','Your_future_self_says_thanks.mp3',
+      'they_go_high_we_go_slow.mp3','the_only_rush_is_in_your_head.mp3','the_smart_money_is_on_slowing_down.mp3','this_picture_is_not_for_the_gram.mp3',
+      'slow_and_easy_hotshot.mp3','slow_is_the_new_fast.mp3','save_the_drama_for_the_drivethru.mp3','pace_yourself.mp3','no_rush_no_fuss.mp3',
+      'no_need_for_a_photo_finish.mp3','less_gas_more_class.mp3','give_those_brakes_a_little_love.mp3','easy_does_it.mp3','drive_like_someone_is_watching.mp3','brakes_are_a_good_good_friend.mp3'
+    ];
+    const LOC = {
+      "Fulton Street from 42nd to 43rd Ave":"fulton_street_from_42nd_to_43rd_ave.mp3",
+      "Lincoln Way from 27th to 28th Ave":"lincoln_way_from_27th_to_28th_ave.mp3",
+      "Geary Blvd from 7th to 8th Ave":"geary_blvd_from_7th_to_8th_ave.mp3",
+      "Fulton St from 2nd Ave to Arguello Blvd":"fulton_st_from_2nd_ave_to_arguello_blvd.mp3",
+      "Geary Blvd from Webster to Buchanan St":"geary_blvd_from_webster_to_buchanan_st.mp3",
+      "Turk St from Van Ness Ave to Polk St":"turk_st_from_van_ness_ave_to_polk_st.mp3",
+      "Bay St from Octavia to Gough St":"bay_st_from_octavia_to_gough_st.mp3",
+      "Franklin St from Union to Green St":"franklin_st_from_union_to_green_st.mp3",
+      "Columbus Ave from Lombard to Greenwich St":"columbus_ave_from_lombard_to_greenwich_st.mp3",
+      "Broadway from Powell to Stockton St":"broadway_from_powell_to_stockton_st.mp3",
+      "The Embarcadero from Green to Battery St":"the_embarcadero_from_green_to_battery_st.mp3",
+      "Mission St from 8th to 9th St":"mission_st_from_8th_to_9th_st.mp3",
+      "10th St from Harrison to Folsom St":"10th_st_from_harrison_to_folsom_st.mp3",
+      "9th St from Bryant to Harrison St":"9th_st_from_bryant_to_harrison_st.mp3",
+      "7th St from Harrison to Folsom St":"7th_st_from_harrison_to_folsom_st.mp3",
+      "Harrison St from 4th to 5th St":"harrison_st_from_4th_to_5th_st.mp3",
+      "Bryant St from 2nd to 3rd St":"bryant_st_from_2nd_to_3rd_st.mp3",
+      "King St (EB only) from 4th to 5th St":"king_st_eb_only_from_4th_to_5th_st.mp3",
+      "Market St from Danvers to Douglass St":"market_st_from_danvers_to_douglass_st.mp3",
+      "Guerrero St from 19th to 20th St":"guerrero_st_from_19th_to_20th_st.mp3",
+      "16th St from Bryant St to Potrero Ave":"16th_st_from_bryant_st_to_potrero_ave.mp3",
+      "San Jose Ave from 29th to 30th St":"san_jose_ave_from_29th_to_30th_st.mp3",
+      "Cesar Chavez St from Folsom to Harrison St":"cesar_chavez_st_from_folsom_to_harrison_st.mp3",
+      "Cesar Chavez St from Indiana to Tennessee St":"cesar_chavez_st_from_indiana_to_tennessee_st.mp3",
+      "3rd St (NB only) from Key to Jamestown Ave":"3rd_st_nb_only_from_key_to_jamestown_ave.mp3",
+      "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave":"bayshore_blvd_sb_only_from_101_off_ramp_to_tunnel_ave.mp3",
+      "Geneva Ave from Prague St to Brookdale Ave":"geneva_ave_from_prague_st_to_brookdale_ave.mp3",
+      "Mission St from Ottawa Ave to Allison St":"mission_st_from_ottawa_ave_to_allison_st.mp3",
+      "Alemany Blvd from Farragut to Naglee Ave":"alemany_blvd_from_farragut_to_naglee_ave.mp3",
+      "Ocean Ave from Frida Kahlo Way to Howth St":"ocean_ave_from_frida_kahlo_way_to_howth_st.mp3",
+      "San Jose Ave from Santa Ynez to Ocean Ave":"san_jose_ave_from_santa_ynez_to_ocean_ave.mp3",
+      "Monterey Blvd from Edna to Congo St":"monterey_blvd_from_edna_to_congo_st.mp3",
+      "Sloat Blvd from 41st Ave to Skyline Blvd":"sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
+    };
+
+    /* Self-heal audio manifest (skip missing files) */
+    async function urlExists(url) {
+      try {
+        let r = await fetch(url, { method:'HEAD', cache:'no-store' });
+        if (r.ok) return true;
+        if (r.status === 405) { r = await fetch(url, { method:'GET', cache:'no-store' }); return r.ok; }
+        return false;
+      } catch { return false; }
+    }
+    async function pruneMissingAudio() {
+      const okStems = []; for (const s of STEMS) { if (await urlExists(`${AUDIO_BASE}${s}`)) okStems.push(s); }
+      STEMS.length = 0; STEMS.push(...okStems);
+      const okTags = []; for (const t of TAGS)  { if (await urlExists(`${AUDIO_BASE}${t}`)) okTags.push(t); }
+      TAGS.length = 0; TAGS.push(...okTags);
+      const okLoc = {}; for (const [k,f] of Object.entries(LOC)) { if (await urlExists(`${AUDIO_BASE}${f}`)) okLoc[k] = f; }
+      for (const k of Object.keys(LOC)) delete LOC[k]; Object.assign(LOC, okLoc);
+      if (DEV) console.info('[DEV] audio manifest:', { stems: STEMS.length, tags: TAGS.length, locs: Object.keys(LOC).length });
+    }
+    const audioManifestReady = pruneMissingAudio();
+
+    function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+    function playLocationOnly(name) { const f = LOC[name]; if (f) playNow(`${AUDIO_BASE}${f}`); }
+
+    /* Corridors & poles */
+    const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
+    const POLES_URL     = `${DATA_BASE}/poles.json`;
+    const POLY_STYLE = { stroke:false, weight:0, color:'#1e88e5', opacity:0, fillColor:'#1e88e5', fillOpacity:0.18 };
+
+    function toRad(d){ return d * Math.PI / 180; }
+    function toDeg(r){ return r * 180 / Math.PI; }
+    function distKm(aLat,aLon,bLat,bLon){
+      const R = 6371, dLat = toRad(bLat - aLat), dLon = toRad(bLon - aLon);
+      const s = Math.sin(dLat/2)**2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon/2)**2;
+      return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+    }
+    function bearingDeg(aLat,aLon,bLat,bLon){
+      const dLon = toRad(bLon - aLon);
+      const y = Math.sin(dLon)*Math.cos(toRad(bLat));
+      const x = Math.cos(toRad(aLat))*Math.sin(toRad(bLat)) - Math.sin(toRad(aLat))*Math.cos(toRad(bLat))*Math.cos(dLon);
+      return (toDeg(Math.atan2(y, x)) + 360) % 360;
+    }
+    function angDiff(a,b){ let d = Math.abs(a-b)%360; return d>180?360-d:d; }
+    function headingIsOk(posHeading, fromLat,fromLon,toLat,toLon,cameraDir){
+      if (typeof posHeading !== 'number' || !Number.isFinite(posHeading)) return true;
+      const toCam = bearingDeg(fromLat,fromLon,toLat,toLon);
+      if (angDiff(posHeading, toCam) > 70) return false;
+      const h = posHeading;
+      switch ((cameraDir || 'BOTH').toUpperCase()) {
+        case 'NB': return (h > 315 || h < 45);
+        case 'SB': return (h > 135 && h < 225);
+        case 'EB': return (h > 45 && h < 135);
+        case 'WB': return (h > 225 && h < 315);
+        default:   return true;
+      }
+    }
+    function nearestCameraName(lat, lon) {
+      let best = null, bestD = Infinity;
+      for (const c of cameras) {
+        const d = distKm(lat, lon, c.lat, c.lon); if (d < bestD) { bestD = d; best = c.name; }
+      }
+      return best;
+    }
+    function pushCorridorPolys(geo) {
+      if (!geo) return;
+      const pushOne = (feat) => {
+        const t = feat?.geometry?.type;
+        if (t === 'Polygon' || t === 'MultiPolygon') corridorPolys.push(feat);
+      };
+      if (geo.type === 'Feature') pushOne(geo);
+      else if (geo.type === 'FeatureCollection') (geo.features || []).forEach(pushOne);
+    }
+    function normalizeToPolygons(fc) {
+      const out = [];
+      for (const f of (fc?.features || [])) {
+        const t = f?.geometry?.type || '';
+        if (t.includes('Line')) {
+          const buf = turf.buffer(f, 0.02, { units:'kilometers' });
+          if (buf?.type === 'FeatureCollection') (buf.features || []).forEach(bf => out.push(bf));
+          else if (buf) out.push(buf);
+        } else if (t === 'Polygon' || t === 'MultiPolygon') {
+          out.push(f);
+        }
+      }
+      return { type:'FeatureCollection', features: out };
+    }
+    function addCorridors(fc) {
+      const layer = L.geoJSON(fc, {
+        style: POLY_STYLE,
+        onEachFeature: (feat, l) => {
+          const nm = feat.properties?.CORRIDOR || feat.properties?.Name || feat.properties?.Segment || feat.properties?.name || 'Approach Area';
+          l.bindPopup(nm);
+        }
+      }).addTo(areaLayer);
+      pushCorridorPolys(fc);
+      return layer;
+    }
+    function polyToMultiLine(feature) {
+      try {
+        const out = turf.polygonToLine(feature);
+        if (!out) return null;
+        if (out.type === 'Feature' && /LineString/i.test(out.geometry?.type)) return out;
+        if (out.type === 'Feature' && out.geometry?.type === 'MultiLineString') return out;
+        if (out.type === 'FeatureCollection') {
+          const lines = out.features.map(f => f.geometry).filter(g => g && /LineString/i.test(g.type)).map(g => g.coordinates);
+          if (lines.length) return turf.multiLineString(lines);
+        }
+      } catch {}
+      return null;
+    }
+    function snapToPolygonEdge(lng, lat, polyFeature) {
+      try {
+        const pt = turf.point([lng, lat]);
+        const line = polyToMultiLine(polyFeature) || (polyFeature?.geometry?.coordinates?.[0] ? turf.lineString(polyFeature.geometry.coordinates[0]) : null);
+        if (!line) return [lat, lng];
+        const snapped = turf.nearestPointOnLine(line, pt, { units:'kilometers' });
+        const [slng, slat] = snapped.geometry.coordinates;
+        return [slat, slng];
+      } catch { return [lat, lng]; }
+    }
+    function filterCorridorsToPoles(corridorsFC, polesFC) {
+      const polys = (corridorsFC.features || []).filter(f => {
+        const t = f.geometry?.type; return t === 'Polygon' || t === 'MultiPolygon';
+      });
+      const centers = polys.map((f, i) => ({ i, c: turf.centerOfMass(f) }));
+      const poles = (polesFC.features || []).filter(f => f.geometry?.type === 'Point');
+      const picked = new Set(), selected = [], corridorForPole = new Map();
+      for (const pole of poles) {
+        const name = pole.properties?.name || `pole_${selected.length + 1}`;
+        const pt = turf.point(pole.geometry.coordinates);
+        const ranked = centers.map(({i,c}) => ({ i, d: turf.distance(pt, c, { units:'kilometers' }) })).sort((a,b) => a.d - b.d);
+        const choice = ranked.find(r => !picked.has(r.i))?.i ?? ranked[0]?.i;
+        if (choice != null) { picked.add(choice); const poly = polys[choice]; selected.push(poly); corridorForPole.set(name, poly); }
+      }
+      return { fc: { type:'FeatureCollection', features:selected }, corridorForPole };
+    }
+    function addPoleMarkers(fc, corridorForPole) {
+      const camIcon = L.icon({
+        iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>'),
+        iconSize: [28, 28], iconAnchor: [14, 14]
+      });
+      const feats = (fc.features || []).filter(f => {
+        const g = f.geometry || {}; if (g.type !== 'Point' || !Array.isArray(g.coordinates)) return false;
+        const [x, y] = g.coordinates; return x > -124 && x < -121 && y > 37 && y < 38;
+      });
+      const ul = document.querySelector('.camera-list'); if (ul) ul.innerHTML = '';
+      const latlngs = [];
+      for (const f of feats) {
+        const [lng, lat] = f.geometry.coordinates;
+        const name = f.properties?.name || 'Speed Camera';
+        const poly = corridorForPole?.get(name);
+        const [snapLat, snapLng] = poly ? snapToPolygonEdge(lng, lat, poly) : [lat, lng];
+        const m = L.marker([snapLat, snapLng], { icon: camIcon }).addTo(poleLayer);
+        const div = document.createElement('div'); div.textContent = name; m.bindPopup(div);
+        m.on('click', () => { if (LOC[name]) playLocationOnly(name); });
+        latlngs.push([snapLat, snapLng]);
+        if (ul) {
+          const li = document.createElement('li');
+          li.className = 'list-group-item'; li.textContent = name; li.setAttribute('role','option'); li.setAttribute('tabindex','0');
+          li.addEventListener('click', () => { map.setView([snapLat, snapLng], 15); if (LOC[name]) playLocationOnly(name); });
+          li.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); li.click(); } });
+          ul.appendChild(li);
+        }
+      }
+      if (latlngs.length) map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
+      invalidateMapSizeSoon();
+    }
+
+    /* Speed sign */
+    let speedSignTO = null;
+    const DEFAULT_LIMIT = 30;
+    const SPEED_SIGN_MS = DEV ? 2000 : 5000;
+    function showSpeedSign(limit) {
+      const box = document.getElementById('speedSign'), val = document.getElementById('speedLimitValue');
+      if (!box || !val) return;
+      const isUnknown = !Number.isFinite(limit);
+      const toShow = isUnknown ? DEFAULT_LIMIT : limit;
+      box.classList.remove('fallback','unknown');
+      box.classList.toggle('fallback', isUnknown);
+      box.classList.toggle('unknown', isUnknown);
+      val.textContent = String(toShow);
+      box.hidden = false; box.classList.add('show');
+      maybeBeep();
+      clearTimeout(speedSignTO);
+      speedSignTO = setTimeout(hideSpeedSign, SPEED_SIGN_MS);
+    }
+    function hideSpeedSign(){ const box = document.getElementById('speedSign'); if (!box) return; box.classList.remove('show'); clearTimeout(speedSignTO); speedSignTO = null; setTimeout(()=>{ box.hidden = true; }, 200); }
+
+    /* Gates / timing */
+    const EXIT_M = 150, HYSTERESIS_M = 20;
+    const MAX_ACC_M = 75, MIN_SPEED_MPS = 2.2;
+    const COOLDOWN_MS = 10000;
+    const REARM_M = DEV ? 50 : 100;
+    const PREARM_EXTRA_M = 120; // cushion when speed readings are low
+    function enterDistanceM(speedMps){ const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.35; return Math.max(150, Math.min(450, Math.round(v * 11))); }
+    const insideNow = new Set(), lastAlertAt = new Map(), lastAlertPos = new Map();
+    function distM(aLat,aLon,bLat,bLon){ return distKm(aLat,aLon,bLat,bLon) * 1000; }
+    function markAlert(name, lat, lon){ lastAlertAt.set(name, Date.now()); lastAlertPos.set(name, { lat, lon }); }
+    function passesGates(coords){
+      const { accuracy, speed } = coords;
+      if (accuracy && accuracy > MAX_ACC_M) return false;
+      if (typeof speed === 'number' && speed < MIN_SPEED_MPS) return false;
+      return true;
+    }
+    function isInsideAnyCorridor(lat, lon){
+      try { const pt = turf.point([lon, lat]); return corridorPolys.some(poly => { try { return turf.booleanPointInPolygon(pt, poly); } catch { return false; } }); } catch { return false; }
+    }
+
+    /* GPS start/stop */
+    async function startGPS() {
+      if (!('geolocation' in navigator)) { showDebug('No geolocation API', true); return; }
+      if (window.__watchId != null) return;
+      await dataReady;
+      if (!map.hasLayer(userMarker)) userMarker.addTo(map);
+      window.__watchId = navigator.geolocation.watchPosition(async pos => {
+        const { latitude, longitude } = pos.coords;
+        // Always move the dot so GPS looks alive even while accuracy warms up
+        userMarker.setLatLng([latitude, longitude]);
+
+        // First good fix → bring the map to the user
+        if (__firstLock) {
+          __firstLock = false;
+          try { map.setView([latitude, longitude], isMobile ? 17 : 16, { animate:true }); } catch {}
+          invalidateMapSizeSoon();
+        }
+
+        if (!passesGates(pos.coords)) {
+          if (DEV) console.debug('[DEV] gates blocked', { acc: +(pos.coords.accuracy||0).toFixed(1), spd: +(pos.coords.speed||0).toFixed(1) });
+          return;
+        }
+
+        const inCorridor = isInsideAnyCorridor(latitude, longitude);
+        const nearestName = nearestCameraName(latitude, longitude);
+        const now = Date.now();
+
+        for (const cam of cameras) {
+          const dM = distKm(latitude, longitude, cam.lat, cam.lon) * 1000;
+          const nearPoint = dM <= Math.max(enterDistanceM(pos.coords.speed), PREARM_EXTRA_M);
+          const headingOk = headingIsOk(pos.coords.heading, latitude, longitude, cam.lat, cam.lon, cam.direction);
+          const inZone = headingOk && (nearPoint || (inCorridor && (nearestName === cam.name)));
+          const wasIn = insideNow.has(cam.name);
+          const movedEnough = (() => { const p = lastAlertPos.get(cam.name); return p ? (distM(latitude, longitude, p.lat, p.lon) > REARM_M) : true; })();
+
+          if (!wasIn && inZone) {
+            const last = lastAlertAt.get(cam.name) || 0;
+            if (now - last > COOLDOWN_MS && movedEnough) {
+              await ensureAudioReady();
+              playGeofenceAlert(cam.name);
+              markAlert(cam.name, latitude, longitude);
             }
-            // Optional: show DEV badge
-            document.getElementById('devBadge')?.classList.toggle('show', DEV);
-            try { history.scrollRestoration = 'manual'; } catch {}
-            if (location.hash) { history.replaceState(null, '', location.pathname); }
-            window.addEventListener('load', () => {
-                window.scrollTo(0, 0);
-                if (document.activeElement) document.activeElement.blur();
-            }, { once: true });
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            /* -------- Background video (autoplay-safe) -------- */
-            const bg = document.getElementById('bgvid');
-            const srcEl = document.getElementById('bgvidSrc');
-            if (bg && srcEl) {
-                bg.muted = true;
-                bg.setAttribute('muted', '');
-                bg.setAttribute('playsinline', '');
-                bg.setAttribute('webkit-playsinline', '');
-                srcEl.src = `${BASE}/videos/background.mp4`;
-                bg.load();
-                const retryPlay = () => {
-                    const p = bg.play();
-                    if (p && p.catch) p.catch(() => setTimeout(() => bg.play().catch(() => {}), 100));
-                };
-                bg.addEventListener('loadeddata', () => bg.removeAttribute('poster'), { once: true });
-                retryPlay();
-            }
-            /* -------- Overlay PNGs + dynamic spacing -------- */
-            const ovM = document.getElementById('ovPaidSrcM');
-            if (ovM) ovM.srcset = `${BASE}/images/Copyblockmobile_paid.png`;
-            const paidImg = document.getElementById('ovPaidImg');
-            if (paidImg){
-                paidImg.src = `${BASE}/images/Copyblockdesktop_paid.png`;
-                paidImg.addEventListener('load', () => {
-                    paidImg.style.transform = `translateY(var(--overlay-paid-offset))`;
-                    requestAnimationFrame(() => requestAnimationFrame(applyOverlaySpacing));
-                }, { once: true });
-            }
-            function applyOverlaySpacing() {
-                const root = document.documentElement;
-                const topPx = parseFloat(getComputedStyle(root).getPropertyValue('--overlay-top')) || 0;
-                const paidOffset = parseFloat(getComputedStyle(root).getPropertyValue('--overlay-paid-offset')) || 0;
-                const ph = paidImg?.getBoundingClientRect().height || 0;
-                const measured = ph ? Math.round(ph + topPx + paidOffset) : 220;
-                const IS_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
-                const anchor = IS_IOS ? Math.round((window.visualViewport?.height || window.innerHeight) * 0.46) : 0;
-                const mt = Math.max(measured, anchor);
-                root.style.setProperty('--paid-offset-mobile', `${mt}px`);
-                root.style.setProperty('--paid-offset-desktop', `${Math.max(mt, 330)}px`);
-                if (DEV) console.info('[DEV] overlay h:', ph, 'measured:', measured, 'anchor:', anchor, 'margin-top:', mt);
-            }
-            applyOverlaySpacing();
-            let ovRzT;
-            const reflowOverlay = () => {
-                clearTimeout(ovRzT);
-                ovRzT = setTimeout(applyOverlaySpacing, 100);
-            };
-            addEventListener('resize', reflowOverlay, { passive: true });
-            addEventListener('orientationchange', reflowOverlay);
-            if (window.visualViewport) window.visualViewport.addEventListener('resize', reflowOverlay, { passive: true });
-            /* -------- Stripe -------- */
-            const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
-            const payCTA = document.getElementById('payCTA');
-            if (payCTA) payCTA.addEventListener('click', (e) => {
-                e.preventDefault();
-                window.open(STRIPE_URL, '_blank', 'noopener,noreferrer');
-            });
-            /* Fit BG container height (debounced) */
-            const sizeBG = () => {
-                const el = document.querySelector('.video-bg');
-                if (!el) return;
-                el.style.height = window.innerHeight + 'px';
-            };
-            let rzT;
-            const debouncedSizeBG = () => {
-                clearTimeout(rzT);
-                rzT = setTimeout(sizeBG, 100);
-            };
-            addEventListener('resize', debouncedSizeBG, { passive: true });
-            addEventListener('orientationchange', debouncedSizeBG);
-            sizeBG();
-            /* -------- Debug badge + fetch wrapper -------- */
-            function showDebug(msg, isErr = false) {
-                let el = document.getElementById('debugBadge');
-                if (!el) {
-                    el = document.createElement('div');
-                    el.id = 'debugBadge';
-                    el.setAttribute('role', 'status');
-                    el.style.cssText = 'position:fixed;right:10px;bottom:10px;z-index:9999;padding:8px 10px;border-radius:8px;background:#111;color:#fff;font:600 12px system-ui;opacity:.9';
-                    document.body.appendChild(el);
-                }
-                el.style.background = isErr ? '#8b0000' : '#111';
-                el.textContent = msg;
-            }
-            async function fetchJSON(url) {
-                try {
-                    const sep = url.includes('?') ? '&' : '?';
-                    const r = await fetch(`${url}${sep}v=${Date.now()}`, { cache: 'no-store' });
-                    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                    return await r.json();
-                } catch (e) {
-                    console.warn('Fetch failed', url, e);
-                    showDebug(`Failed: ${url.split('/').pop()}`, true);
-                    throw e;
-                }
-            }
-            /* -------- Map -------- */
-            let map, userMarker;
-            const poleLayer = L.layerGroup();
-            const areaLayer = L.layerGroup();
-            const corridorPolys = []; // polygons for in-zone checks
-            function initMap() {
-                map = L.map('map', { zoomControl: true }).setView([37.7749, -122.4194], 12);
-                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
-                poleLayer.addTo(map);
-                areaLayer.addTo(map);
-                const ul = document.querySelector('.camera-list');
-                ul?.setAttribute('role', 'listbox');
-                const dot = L.divIcon({ className: 'loc-dot' });
-                userMarker = L.marker([37.7749, -122.4194], { icon: dot });
-            }
-            /* -------- Audio unlock + helpers -------- */
-            const AUDIO_BASE = `${BASE}/images/audio/`;
-            const AudioUnlock = (() => {
-                let ctx = null, unlocked = false;
-                async function unlock() {
-                    if (unlocked) return true;
-                    try {
-                        ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-                        await ctx.resume();
-                        const b = ctx.createBuffer(1, 1, ctx.sampleRate);
-                        const s = ctx.createBufferSource();
-                        s.buffer = b;
-                        s.connect(ctx.destination);
-                        s.start(0);
-                        unlocked = true;
-                    } catch {}
-                    return unlocked;
-                }
-                window.addEventListener('pointerdown', () => unlock(), { once: true, passive: true });
-                return { unlock, get unlocked() { return unlocked; }, get ctx() { return ctx; } };
-            })();
-            // ---- Speed-sign chirp ----
-            const BEEP_URL = `${AUDIO_BASE}beep.mp3`;
-            let beepBuffer = null, beepEl = null;
-            async function prepareBeep() {
-                try {
-                    await AudioUnlock.unlock();
-                    const res = await fetch(`${BEEP_URL}?v=${Date.now()}`, { cache: 'force-cache' });
-                    const ab = await res.arrayBuffer();
-                    const ctx = AudioUnlock.ctx;
-                    beepBuffer = await ctx.decodeAudioData(ab);
-                } catch {
-                    // Fallback <audio>
-                    beepEl = new Audio(BEEP_URL);
-                    beepEl.preload = 'auto';
-                    beepEl.crossOrigin = 'anonymous';
-                    try { beepEl.load(); } catch {}
-                }
-            }
-            prepareBeep();
-            function maybeBeep() {
-                if (mode === 'mute') return;
-                if (beepBuffer && AudioUnlock.ctx) {
-                    try {
-                        const ctx = AudioUnlock.ctx;
-                        const src = ctx.createBufferSource();
-                        const g = ctx.createGain();
-                        g.gain.value = 0.09;
-                        src.buffer = beepBuffer;
-                        src.connect(g);
-                        g.connect(ctx.destination);
-                        src.start(0);
-                        return;
-                    } catch {}
-                }
-                if (beepEl) {
-                    try { beepEl.currentTime = 0; } catch {}
-                    beepEl.play().catch(() => {});
-                }
-            }
-            async function ensureAudioReady() {
-                try {
-                    await AudioUnlock.unlock();
-                    const ctx = AudioUnlock.ctx;
-                    if (ctx && ctx.state === 'suspended') {
-                        await ctx.resume();
-                    }
-                } catch {}
-            }
-            window.addEventListener('touchend', () => AudioUnlock.unlock(), { once: true, passive: true });
-            let player = new Audio();
-            function isStandalone() {
-                return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
-            }
-            async function playNow(url) {
-                if (mode === 'mute') return;
-                if (document.visibilityState !== 'visible' && !isStandalone()) {
-                    if (DEV) console.warn('Audio blocked: page hidden');
-                    return;
-                }
-                await ensureAudioReady();
-                const u = url + (DEV ? ((url.includes('?') ? '&' : '?') + 'v=' + Date.now()) : '');
-                return new Promise((resolve) => {
-                    try { player.pause(); } catch {}
-                    player = new Audio(u);
-                    player.muted = false;
-                    player.preload = 'auto';
-                    player.crossOrigin = 'anonymous';
-                    player.playsInline = true;
-                    let watchdogTO;
-                    const armWatchdog = () => {
-                        const ms = Math.min(30000, Math.max(15000, Number.isFinite(player.duration) ? (player.duration + 0.25) * 1000 : 15000));
-                        clearTimeout(watchdogTO);
-                        watchdogTO = setTimeout(() => {
-                            if (DEV) console.warn('Audio watchdog elapsed for', u.split('/').pop());
-                            resolve();
-                        }, ms);
-                    };
-                    player.onloadedmetadata = armWatchdog;
-                    player.onended = () => {
-                        clearTimeout(watchdogTO);
-                        resolve();
-                    };
-                    player.onerror = () => {
-                        clearTimeout(watchdogTO);
-                        if (DEV) console.error('Audio error:', u);
-                        resolve();
-                    };
-                    armWatchdog();
-                    player.play().catch(err => {
-                        if (DEV) console.error('play() rejected:', err);
-                        clearTimeout(watchdogTO);
-                        resolve();
-                    });
-                });
-            }
-            /* -------- Audio lists (stems/tags/locations) -------- */
-            const STEMS = Array.from({ length: 11 }, (_, i) => `speed_camera_ahead_${i + 1}.mp3`);
-            const TAGS = [
-                'your_wallet_just_got_a_little_nervous.mp3',
-                'your_best_pose_is_slow.mp3',
-                'your_brakes_called_they_are_ready_to_help.mp3',
-                'Your_future_self_says_thanks.mp3',
-                'they_go_high_we_go_slow.mp3',
-                'the_only_rush_is_in_your_head.mp3',
-                'the_smart_money_is_on_slowing_down.mp3',
-                'this_picture_is_not_for_the_gram.mp3',
-                'slow_and_easy_hotshot.mp3',
-                'slow_is_the_new_fast.mp3',
-                'save_the_drama_for_the_drivethru.mp3',
-                'pace_yourself.mp3',
-                'no_rush_no_fuss.mp3',
-                'no_need_for_a_photo_finish.mp3',
-                'less_gas_more_class.mp3',
-                'give_those_brakes_a_little_love.mp3',
-                'easy_does_it.mp3',
-                'drive_like_someone_is_watching.mp3',
-                'brakes_are_a_good_good_friend.mp3'
-            ];
-            const LOC = {
-                "Fulton Street from 42nd to 43rd Ave": "fulton_street_from_42nd_to_43rd_ave.mp3",
-                "Lincoln Way from 27th to 28th Ave": "lincoln_way_from_27th_to_28th_ave.mp3",
-                "Geary Blvd from 7th to 8th Ave": "geary_blvd_from_7th_to_8th_ave.mp3",
-                "Fulton St from 2nd Ave to Arguello Blvd": "fulton_st_from_2nd_ave_to_arguello_blvd.mp3",
-                "Geary Blvd from Webster to Buchanan St": "geary_blvd_from_webster_to_buchanan_st.mp3",
-                "Turk St from Van Ness Ave to Polk St": "turk_st_from_van_ness_ave_to_polk_st.mp3",
-                "Bay St from Octavia to Gough St": "bay_st_from_octavia_to_gough_st.mp3",
-                "Franklin St from Union to Green St": "franklin_st_from_union_to_green_st.mp3",
-                "Columbus Ave from Lombard to Greenwich St": "columbus_ave_from_lombard_to_greenwich_st.mp3",
-                "Broadway from Powell to Stockton St": "broadway_from_powell_to_stockton_st.mp3",
-                "The Embarcadero from Green to Battery St": "the_embarcadero_from_green_to_battery_st.mp3",
-                "Mission St from 8th to 9th St": "mission_st_from_8th_to_9th_st.mp3",
-                "10th St from Harrison to Folsom St": "10th_st_from_harrison_to_folsom_st.mp3",
-                "9th St from Bryant to Harrison St": "9th_st_from_bryant_to_harrison_st.mp3",
-                "7th St from Harrison to Folsom St": "7th_st_from_harrison_to_folsom_st.mp3",
-                "Harrison St from 4th to 5th St": "harrison_st_from_4th_to_5th_st.mp3",
-                "Bryant St from 2nd to 3rd St": "bryant_st_from_2nd_to_3rd_st.mp3",
-                "King St (EB only) from 4th to 5th St": "king_st_eb_only_from_4th_to_5th_st.mp3",
-                "Market St from Danvers to Douglass St": "market_st_from_danvers_to_douglass_st.mp3",
-                "Guerrero St from 19th to 20th St": "guerrero_st_from_19th_to_20th_st.mp3",
-                "16th St from Bryant St to Potrero Ave": "16th_st_from_bryant_st_to_potrero_ave.mp3",
-                "San Jose Ave from 29th to 30th St": "san_jose_ave_from_29th_to_30th_st.mp3",
-                "Cesar Chavez St from Folsom to Harrison St": "cesar_chavez_st_from_folsom_to_harrison_st.mp3",
-                "Cesar Chavez St from Indiana to Tennessee St": "cesar_chavez_st_from_indiana_to_tennessee_st.mp3",
-                "3rd St (NB only) from Key to Jamestown Ave": "3rd_st_nb_only_from_key_to_jamestown_ave.mp3",
-                "Bayshore Blvd (SB only) from 101 off-ramp to Tunnel Ave": "bayshore_blvd_sb_only_from_101_off_ramp_to_tunnel_ave.mp3",
-                "Geneva Ave from Prague St to Brookdale Ave": "geneva_ave_from_prague_st_to_brookdale_ave.mp3",
-                "Mission St from Ottawa Ave to Allison St": "mission_st_from_ottawa_ave_to_allison_st.mp3",
-                "Alemany Blvd from Farragut to Naglee Ave": "alemany_blvd_from_farragut_to_naglee_ave.mp3",
-                "Ocean Ave from Frida Kahlo Way to Howth St": "ocean_ave_from_frida_kahlo_way_to_howth_st.mp3",
-                "San Jose Ave from Santa Ynez to Ocean Ave": "san_jose_ave_from_santa_ynez_to_ocean_ave.mp3",
-                "Monterey Blvd from Edna to Congo St": "monterey_blvd_from_edna_to_congo_st.mp3",
-                "Sloat Blvd from 41st Ave to Skyline Blvd": "sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
-            };
-            // ---- Self-healing audio manifest (prune 404s) ----
-            async function urlExists(url) {
-                try {
-                    let r = await fetch(url, { method: 'HEAD', cache: 'no-store' });
-                    if (r.ok) return true;
-                    if (r.status === 405) {
-                        r = await fetch(url, { method: 'GET', cache: 'no-store' });
-                        return r.ok;
-                    }
-                    return false;
-                } catch { return false; }
-            }
-            async function pruneMissingAudio() {
-                const okStems = [];
-                for (const s of STEMS) {
-                    const u = `${AUDIO_BASE}${s}`;
-                    if (await urlExists(u)) okStems.push(s);
-                }
-                STEMS.length = 0;
-                STEMS.push(...okStems);
-                const okTags = [];
-                for (const t of TAGS) {
-                    const u = `${AUDIO_BASE}${t}`;
-                    if (await urlExists(u)) okTags.push(t);
-                }
-                TAGS.length = 0;
-                TAGS.push(...okTags);
-                const okLoc = {};
-                for (const [k, f] of Object.entries(LOC)) {
-                    const u = `${AUDIO_BASE}${f}`;
-                    if (await urlExists(u)) okLoc[k] = f;
-                }
-                for (const k of Object.keys(LOC)) delete LOC[k];
-                Object.assign(LOC, okLoc);
-                if (DEV) console.info('[DEV] audio manifest:', { stems: STEMS.length, tags: TAGS.length, locs: Object.keys(LOC).length });
-            }
-            const audioManifestReady = pruneMissingAudio();
-            function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
-            function playLocationOnly(name) {
-                const f = LOC[name];
-                if (f) playNow(`${AUDIO_BASE}${f}`);
-            }
-            /* -------- Poles & Corridors -------- */
-            const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
-            const POLES_URL = `${DATA_BASE}/poles.json`;
-            const POLY_STYLE = { stroke: false, weight: 0, color: '#1e88e5', opacity: 0, fillColor: '#1e88e5', fillOpacity: 0.18 };
-            function toRad(d) { return d * Math.PI / 180; }
-            function distKm(aLat, aLon, bLat, bLon) {
-                const R = 6371, dLat = toRad(bLat - aLat), dLon = toRad(bLon - aLon);
-                const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
-                return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
-            }
-            function toDeg(r){ return r * 180 / Math.PI; } 
-            function bearingDeg(aLat,aLon,bLat,bLon){ 
-                const toRad = d => d * Math.PI / 180; 
-                const dLon = toRad(bLon - aLon); 
-                const y = Math.sin(dLon)*Math.cos(toRad(bLat)); 
-                const x = Math.cos(toRad(aLat))*Math.sin(toRad(bLat)) - Math.sin(toRad(aLat))*Math.cos(toRad(bLat))*Math.cos(dLon); 
-                return (toDeg(Math.atan2(y, x)) + 360) % 360; 
-            } 
-            function angDiff(a,b){ 
-                let d = Math.abs(a-b)%360; 
-                return d>180?360-d:d; 
-            } 
-            function headingIsOk(posHeading, fromLat,fromLon,toLat,toLon,cameraDir){ 
-                if (typeof posHeading !== 'number' || !Number.isFinite(posHeading)) return true; 
-                const toCam = bearingDeg(fromLat,fromLon,toLat,toLon); 
-                if (angDiff(posHeading, toCam) > 70) return false; 
-                const h = posHeading; 
-                switch ((cameraDir || 'BOTH').toUpperCase()) { 
-                    case 'NB': return (h > 315 || h < 45); 
-                    case 'SB': return (h > 135 && h < 225); 
-                    case 'EB': return (h > 45 && h < 135); 
-                    case 'WB': return (h > 225 && h < 315); 
-                    default: return true; 
-                } 
-            }
-            function nearestCameraName(lat, lon) {
-                let best = null, bestD = Infinity;
-                for (const c of cameras) {
-                    const d = distKm(lat, lon, c.lat, c.lon);
-                    if (d < bestD) { bestD = d; best = c.name; }
-                }
-                return best;
-            }
-            function pushCorridorPolys(geo) {
-                if (!geo) return;
-                const pushOne = (feat) => {
-                    const t = feat?.geometry?.type;
-                    if (t === 'Polygon' || t === 'MultiPolygon') corridorPolys.push(feat);
-                };
-                if (geo.type === 'Feature') pushOne(geo);
-                else if (geo.type === 'FeatureCollection') (geo.features || []).forEach(pushOne);
-            }
-            function normalizeToPolygons(fc) {
-                const out = [];
-                for (const f of (fc?.features || [])) {
-                    const t = f?.geometry?.type || '';
-                    if (t.includes('Line')) {
-                        const buf = turf.buffer(f, 0.02, { units: 'kilometers' });
-                        if (buf?.type === 'FeatureCollection') (buf.features || []).forEach(bf => out.push(bf));
-                        else if (buf) out.push(buf);
-                    } else if (t === 'Polygon' || t === 'MultiPolygon') {
-                        out.push(f);
-                    }
-                }
-                return { type: 'FeatureCollection', features: out };
-            }
-            function addCorridors(fc) {
-                const layer = L.geoJSON(fc, {
-                    style: POLY_STYLE,
-                    onEachFeature: (feat, l) => {
-                        const nm = feat.properties?.CORRIDOR || feat.properties?.Name || feat.properties?.Segment || feat.properties?.name || 'Approach Area';
-                        l.bindPopup(nm);
-                    }
-                }).addTo(areaLayer);
-                pushCorridorPolys(fc);
-                return layer;
-            }
-            function polyToMultiLine(feature) {
-                try {
-                    const out = turf.polygonToLine(feature);
-                    if (!out) return null;
-                    if (out.type === 'Feature' && /LineString/i.test(out.geometry?.type)) return out;
-                    if (out.type === 'Feature' && out.geometry?.type === 'MultiLineString') return out;
-                    if (out.type === 'FeatureCollection') {
-                        const lines = out.features
-                            .map(f => f.geometry)
-                            .filter(g => g && /LineString/i.test(g.type))
-                            .map(g => g.coordinates);
-                        if (lines.length) return turf.multiLineString(lines);
-                    }
-                } catch {}
-                return null;
-            }
-            function snapToPolygonEdge(lng, lat, polyFeature) {
-                try {
-                    const pt = turf.point([lng, lat]);
-                    const line = polyToMultiLine(polyFeature) || (polyFeature?.geometry?.coordinates?.[0] ? turf.lineString(polyFeature.geometry.coordinates[0]) : null);
-                    if (!line) return [lat, lng];
-                    const snapped = turf.nearestPointOnLine(line, pt, { units: 'kilometers' });
-                    const [slng, slat] = snapped.geometry.coordinates;
-                    return [slat, slng];
-                } catch { return [lat, lng]; }
-            }
-            function filterCorridorsToPoles(corridorsFC, polesFC) {
-                const polys = (corridorsFC.features || []).filter(f => {
-                    const t = f.geometry?.type;
-                    return t === 'Polygon' || t === 'MultiPolygon';
-                });
-                const centers = polys.map((f, i) => ({ i, c: turf.centerOfMass(f) }));
-                const poles = (polesFC.features || []).filter(f => f.geometry?.type === 'Point');
-                const picked = new Set();
-                const selected = [];
-                const corridorForPole = new Map();
-                for (const pole of poles) {
-                    const name = pole.properties?.name || `pole_${selected.length + 1}`;
-                    const pt = turf.point(pole.geometry.coordinates);
-                    const ranked = centers
-                        .map(({ i, c }) => ({ i, d: turf.distance(pt, c, { units: 'kilometers' }) }))
-                        .sort((a, b) => a.d - b.d);
-                    const choice = ranked.find(r => !picked.has(r.i))?.i ?? ranked[0]?.i;
-                    if (choice != null) {
-                        picked.add(choice);
-                        const poly = polys[choice];
-                        selected.push(poly);
-                        corridorForPole.set(name, poly);
-                    }
-                }
-                return { fc: { type: 'FeatureCollection', features: selected }, corridorForPole };
-            }
-            function addPoleMarkers(fc, corridorForPole) {
-                const camIcon = L.icon({
-                    iconUrl: 'data:image/svg+xml;utf8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"><circle cx="14" cy="14" r="10" fill="#d62828" stroke="white" stroke-width="3"/></svg>'),
-                    iconSize: [28, 28],
-                    iconAnchor: [14, 14]
-                });
-                const feats = (fc.features || []).filter(f => {
-                    const g = f.geometry || {};
-                    if (g.type !== 'Point' || !Array.isArray(g.coordinates)) return false;
-                    const [x, y] = g.coordinates;
-                    return x > -124 && x < -121 && y > 37 && y < 38;
-                });
-                const ul = document.querySelector('.camera-list');
-                if (ul) ul.innerHTML = '';
-                const latlngs = [];
-                for (const f of feats) {
-                    const [lng, lat] = f.geometry.coordinates;
-                    const name = f.properties?.name || 'Speed Camera';
-                    const poly = corridorForPole?.get(name);
-                    const [snapLat, snapLng] = poly ? snapToPolygonEdge(lng, lat, poly) : [lat, lng];
-                    const m = L.marker([snapLat, snapLng], { icon: camIcon }).addTo(poleLayer);
-                    const div = document.createElement('div');
-                    div.textContent = name;
-                    m.bindPopup(div);
-                    m.on('click', () => {
-                        if (LOC[name]) playLocationOnly(name);
-                    });
-                    latlngs.push([snapLat, snapLng]);
-                    if (ul) {
-                        const li = document.createElement('li');
-                        li.className = 'list-group-item';
-                        li.textContent = name;
-                        li.setAttribute('role', 'option');
-                        li.setAttribute('tabindex', '0');
-                        li.addEventListener('click', () => {
-                            map.setView([snapLat, snapLng], 15);
-                            if (LOC[name]) playLocationOnly(name);
-                        });
-                        li.addEventListener('keydown', (e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                li.click();
-                            }
-                        });
-                        ul.appendChild(li);
-                    }
-                }
-                if (latlngs.length) {
-                    map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
-                }
-            }
-            /* -------- Speed sign (fallback + timers) -------- */
-            let speedSignTO = null;
-            const DEFAULT_LIMIT = 30;
-            const SPEED_SIGN_MS = DEV ? 2000 : 5000;
-            function showSpeedSign(limit) {
-                const box = document.getElementById('speedSign');
-                const val = document.getElementById('speedLimitValue');
-                if (!box || !val) return;
-                const isUnknown = !Number.isFinite(limit);
-                const toShow = isUnknown ? DEFAULT_LIMIT : limit;
-                box.classList.remove('fallback', 'unknown');
-                box.classList.toggle('fallback', isUnknown);
-                box.classList.toggle('unknown', isUnknown);
-                val.textContent = String(toShow);
-                box.hidden = false;
-                box.classList.add('show');
-                maybeBeep();
-                clearTimeout(speedSignTO);
-                speedSignTO = setTimeout(hideSpeedSign, SPEED_SIGN_MS);
-            }
-            function hideSpeedSign() {
-                const box = document.getElementById('speedSign');
-                if (!box) return;
-                box.classList.remove('show');
-                clearTimeout(speedSignTO);
-                speedSignTO = null;
-                setTimeout(() => { box.hidden = true; }, 200);
-            }
-            /* -------- Gates / timing -------- */
-            const EXIT_M = 150;
-            const HYSTERESIS_M = 20;
-            const MAX_ACC_M = 75;
-            const MIN_SPEED_MPS = 2.2;
-            const COOLDOWN_MS = 10000;
-            const REARM_M = DEV ? 50 : 100;
-            function enterDistanceM(speedMps) {
-                const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.35;
-                return Math.max(150, Math.min(450, Math.round(v * 11)));
-            }
-            const insideNow = new Set(), lastAlertAt = new Map();
-            const lastAlertPos = new Map();
-            function distM(aLat, aLon, bLat, bLon) { return distKm(aLat, aLon, bLat, bLon) * 1000; }
-            function markAlert(name, lat, lon) {
-                lastAlertAt.set(name, Date.now());
-                lastAlertPos.set(name, { lat, lon });
-            }
-            function passesGates(coords) {
-                const { accuracy, speed } = coords;
-                if (accuracy && accuracy > MAX_ACC_M) return false;
-                if (typeof speed === 'number' && speed < MIN_SPEED_MPS) return false;
-                return true;
-            }
-            function isInsideAnyCorridor(lat, lon) {
-                try {
-                    const pt = turf.point([lon, lat]);
-                    return corridorPolys.some(poly => {
-                        try { return turf.booleanPointInPolygon(pt, poly); } catch { return false; }
-                    });
-                } catch { return false; }
-            }
-            async function startGPS() {
-                if (!('geolocation' in navigator)) return;
-                if (window.__watchId != null) return;
-                await dataReady;
-                if (!map.hasLayer(userMarker)) userMarker.addTo(map);
-                window.__watchId = navigator.geolocation.watchPosition(async pos => {
-                    const { latitude, longitude } = pos.coords;
-                    // NEW: always update the on-map user marker (so you *see* GPS even if accuracy is high)
-                    userMarker.setLatLng([latitude, longitude]);
-                    if (!passesGates(pos.coords)) {
-                        if (DEV) console.debug('[DEV] gates blocked', { acc: Math.round((pos.coords.accuracy ?? 0) * 10) / 10, spd: Math.round((pos.coords.speed ?? 0) * 10) / 10, lat: +(latitude.toFixed(3)), lon: +(longitude.toFixed(3)) });
-                        return;
-                    }
-                    userMarker.setLatLng([latitude, longitude]);
-                    const inCorridor = isInsideAnyCorridor(latitude, longitude);
-                    const nearestName = nearestCameraName(latitude, longitude);
-                    const now = Date.now();
-                    for (const cam of cameras) {
-                        const dM = distKm(latitude, longitude, cam.lat, cam.lon) * 1000;
-                        const nearPoint = dM <= enterDistanceM(pos.coords.speed);
-                        const inZone = nearPoint || (inCorridor && (nearestName === cam.name));
-                        const wasIn = insideNow.has(cam.name);
-                        const movedEnough = (() => {
-                            const p = lastAlertPos.get(cam.name);
-                            return p ? (distM(latitude, longitude, p.lat, p.lon) > REARM_M) : true;
-                        })();
-                        if (!wasIn && inZone) {
-                            const last = lastAlertAt.get(cam.name) || 0;
-                            if (now - last > COOLDOWN_MS && movedEnough) {
-                                if (DEV) console.debug('[DEV] alert ->', cam.name);
-                                await ensureAudioReady();
-                                playGeofenceAlert(cam.name);
-                                markAlert(cam.name, latitude, longitude);
-                            } else if (DEV) {
-                                const p = lastAlertPos.get(cam.name);
-                                const moved = p ? Math.round(distM(latitude, longitude, p.lat, p.lon)) : 'n/a';
-                                console.debug('[DEV] suppressed', cam.name, { cooldown: now - last, moved });
-                            }
-                            insideNow.add(cam.name);
-                        } else if (wasIn && !inZone && dM > (EXIT_M + HYSTERESIS_M)) {
-                            insideNow.delete(cam.name);
-                            hideSpeedSign();
-                        }
-                    }
-                }, err => console.warn('Geolocation error', err), { enableHighAccuracy: true, maximumAge: 500, timeout: 8000 });
-            }
-            function stopGPS() {
-                if (window.__watchId != null) {
-                    navigator.geolocation.clearWatch(window.__watchId);
-                    window.__watchId = null;
-                }
-                try { map.removeLayer(userMarker); } catch {}
-                insideNow.clear();
-                hideSpeedSign();
-            }
-            /* -------- Warmup button -------- */
-            const warmBtn = document.getElementById('warmup');
-            const testBtn = document.getElementById('testSound');
-            let mode = 'off';
-            function applyMode() {
-                warmBtn.classList.remove('btn-off', 'btn-on', 'btn-mute');
-                warmBtn.setAttribute('aria-pressed', String(mode === 'on'));
-                if (mode === 'off') {
-                    warmBtn.classList.add('btn-off');
-                    warmBtn.textContent = 'Sound & GPS: Off';
-                    stopGPS();
-                }
-                if (mode === 'on') {
-                    warmBtn.classList.add('btn-on');
-                    warmBtn.textContent = 'Sound & GPS: On';
-                    startGPS();
-                }
-                if (mode === 'mute') {
-                    warmBtn.classList.add('btn-mute');
-                    warmBtn.textContent = 'Mute: GPS Only';
-                    startGPS();
-                }
-            }
-            let preloaded = false;
-            warmBtn.addEventListener('click', async () => {
-                await AudioUnlock.unlock();
-                if (!preloaded) {
-                    preloaded = true;
-                    setTimeout(() => preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3), 150);
-                }
-                mode = (mode === 'off') ? 'on' : (mode === 'on' ? 'mute' : 'off');
-                applyMode();
-            });
-            if (DEV && testBtn) testBtn.style.display = '';
-            testBtn?.addEventListener('click', async () => {
-                await audioManifestReady;
-                await ensureAudioReady();
-                await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
-                await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
-            });
-            /* -------- Trial Nag (audio-synced close + caps) -------- */
-            const NAG_FIRST_MS = 120000;
-            const NAG_REPEAT_MS = 15 * 60 * 1000;
-            const NAG_IMAGES = [`${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png`];
-            const NAG_AUDIO_URL = `${BASE}/images/audio/Ad1.mp3`;
-            const nagEl = document.getElementById('nag');
-            const nagImg = document.getElementById('nagImg');
-            const nagCount = document.getElementById('nagCountdown');
-            const nagAudio = new Audio(NAG_AUDIO_URL);
-            nagAudio.preload = 'auto';
-            nagAudio.crossOrigin = 'anonymous';
-            const NAG_MAX_VISIBLE_MS_AUDIO = DEV ? 2000 : 4500;
-            const NAG_MAX_VISIBLE_MS_SILENT = DEV ? 1500 : 2500;
-            let nagPlaying = false, nagBuffer = null, nagBufferReady = false, lastActive = null;
-            function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-            function focusTrapOn() { nagEl?.setAttribute('aria-hidden', 'false'); }
-            function focusTrapOff() { nagEl?.setAttribute('aria-hidden', 'true'); }
-            async function ensureNagBuffer() {
-                if (nagBufferReady) return nagBuffer;
-                try {
-                    const res = await fetch(`${NAG_AUDIO_URL}?v=${Date.now()}`, { cache: 'force-cache' });
-                    const ab = await res.arrayBuffer();
-                    await AudioUnlock.unlock();
-                    const ctx = AudioUnlock.ctx;
-                    nagBuffer = await ctx.decodeAudioData(ab);
-                    nagBufferReady = true;
-                } catch (e) { nagBufferReady = false; }
-                return nagBuffer;
-            }
-            async function playNagWebAudio() {
-                const buf = await ensureNagBuffer();
-                if (!buf) throw new Error('no-buffer');
-                const ctx = AudioUnlock.ctx;
-                return new Promise(resolve => {
-                    const src = ctx.createBufferSource();
-                    src.buffer = buf;
-                    src.connect(ctx.destination);
-                    src.onended = resolve;
-                    try { src.start(0); } catch { resolve(); }
-                });
-            }
-            async function playNagAudioFallback() {
-                await AudioUnlock.unlock();
-                try { nagAudio.pause(); } catch {}
-                try {
-                    nagAudio.currentTime = 0;
-                    nagAudio.load();
-                    await nagAudio.play();
-                } catch {
-                    await sleep(300);
-                    try { await nagAudio.play(); } catch {}
-                }
-            }
-            async function showNag() {
-                if (nagPlaying) return;
-                nagPlaying = true;
-                const audioAllowed = (mode === 'on');
-                lastActive = document.activeElement;
-                if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random() * NAG_IMAGES.length)];
-                if (nagEl) {
-                    nagEl.style.display = 'flex';
-                    nagEl.tabIndex = -1;
-                    nagEl.focus();
-                    focusTrapOn();
-                }
-                const safeClose = () => {
-                    try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
-                    if (nagEl && nagEl.style.display === 'flex') {
-                        nagEl.style.display = 'none';
-                        focusTrapOff();
-                        lastActive?.focus?.();
-                    }
-                    nagPlaying = false;
-                };
-                try {
-                    if (audioAllowed) {
-                        await ensureAudioReady();
-                        let watchdog = setTimeout(safeClose, 12000);
-                        try {
-                            await playNagWebAudio();
-                        } catch {
-                            await playNagAudioFallback();
-                            await new Promise(r => { nagAudio.onended = r; });
-                        }
-                        clearTimeout(watchdog);
-                        safeClose();
-                    } else {
-                        setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
-                    }
-                } catch { safeClose(); }
-            }
-            setTimeout(() => { if (!document.hidden) showNag(); }, NAG_FIRST_MS);
-            let nagInt = null;
-            function armNagInterval() {
-                clearInterval(nagInt);
-                nagInt = setInterval(() => { if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
-            }
-            document.addEventListener('visibilitychange', armNagInterval, { passive: true });
-            armNagInterval();
-            /* -------- Geofence alert chain (instant start) -------- */
-            async function playGeofenceAlert(name) {
-                showSpeedSign(SPEED_LIMITS[name]);
-                try { await ensureAudioReady(); } catch {}
-                maybeBeep();
-                (async () => {
-                    try {
-                        await audioManifestReady;
-                        await ensureAudioReady();
-                        if (mode === 'mute') return;
-                        const f = LOC[name];
-                        const seq = [
-                            `${AUDIO_BASE}${pick(STEMS)}`,
-                            f ? `${AUDIO_BASE}${f}` : null,
-                            `${AUDIO_BASE}${pick(TAGS)}`
-                        ].filter(Boolean);
-                        await new Promise(r => setTimeout(r, 110));
-                        for (const url of seq) {
-                            await playNow(url);
-                        }
-                    } catch (e) {
-                        if (DEV) console.warn('Alert seq error', e);
-                    }
-                })();
-                if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
-            }
-            /* -------- Speed limits loader -------- */
-            const SPEED_LIMITS = {};
-            const SPEEDS_URL = `${DATA_BASE}/camera_speed_limits.json`;
-            function canonicalize(n) {
-                return String(n).toLowerCase()
-                    .replace(/\([^)]*\)/g, ' ')
-                    .replace(/[ ,]/g, ' ')
-                    .replace(/\bfrom\b|\bto\b/g, ' ')
-                    .replace(/^\s*the\s+/i, '')
-                    .replace(/\b(street|st|avenue|ave|boulevard|blvd|road|rd|drive|dr|way)\b/gi, '')
-                    .replace(/-/g, ' ')
-                    .replace(/\s+/g, ' ').trim();
-            }
-            async function loadSpeedLimits() {
-                try {
-                    const rows = await fetchJSON(SPEEDS_URL);
-                    const canon = new Map(rows.map(r => [canonicalize(r.name), +r.speedLimit]));
-                    for (const c of cameras) {
-                        const hit = canon.get(canonicalize(c.name));
-                        if (Number.isFinite(hit)) SPEED_LIMITS[c.name] = hit;
-                    }
-                    const missing = cameras.filter(c => SPEED_LIMITS[c.name] === undefined).map(c => c.name);
-                    if (missing.length) console.warn('No speed limit for:', missing);
-                } catch (e) { /* file may not exist; ignore */ }
-            }
-            /* -------- Start everything -------- */
-            initMap();
-            let cameras = [];
-            let dataReadyResolve;
-            const dataReady = new Promise(res => (dataReadyResolve = res));
-            (async () => {
-                try {
-                    const [corrRaw, poles] = await Promise.all([fetchJSON(CORRIDORS_URL), fetchJSON(POLES_URL)]);
-                    const corrPolysFC = normalizeToPolygons(corrRaw);
-                    cameras = (poles.features || [])
-                        .filter(f => f.geometry?.type === 'Point')
-                        .map(f => {
-                            const [lon, lat] = f.geometry.coordinates;
-                            return { name: f.properties?.name || 'Speed Camera', lat, lon, direction: (f.properties?.direction || 'BOTH').toUpperCase(), pole_id: f.properties?.pole_id };
-                        });
-                    const { fc: corr33, corridorForPole } = filterCorridorsToPoles(corrPolysFC, poles);
-                    addCorridors(corr33);
-                    addPoleMarkers(poles, corridorForPole);
-                    const corrCount = (corr33.features || []).length;
-                    const poleCount = (poles.features || []).length;
-                    showDebug(`Corridors: ${corrCount} • Poles: ${poleCount}`);
-                    await loadSpeedLimits();
-                    dataReadyResolve();
-                } catch (e) {
-                    dataReadyResolve();
-                }
-                await audioManifestReady;
-                setTimeout(() => { preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3); }, 300);
-            })();
-            function buildAudioUrls() {
-                const urls = [];
-                urls.push(`${AUDIO_BASE}beep.mp3`);
-                for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
-                for (const t of TAGS) urls.push(`${AUDIO_BASE}${t}`);
-                Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`));
-                return urls;
-            }
-            async function preloadAudioList(urls, concurrency = 3) {
-                const queue = [...urls];
-                const workers = Array.from({ length: concurrency }, async () => {
-                    while (queue.length) {
-                        const url = queue.shift();
-                        try {
-                            const a = new Audio();
-                            a.preload = 'auto';
-                            a.src = url;
-                            a.load();
-                            await new Promise(r => {
-                                a.oncanplaythrough = () => r();
-                                setTimeout(r, 1200);
-                            });
-                        } catch (e) {}
-                    }
-                });
-                await Promise.all(workers);
-            }
-            addEventListener('pagehide', stopGPS, { once: true });
-            applyMode();
-            function ckSet(k, v, days = 7) {
-                try {
-                    const d = new Date(Date.now() + days * 864e5);
-                    document.cookie = `${encodeURIComponent(k)}=${encodeURIComponent(v)}; path=/; expires=${d.toUTCString()}`;
-                } catch {}
-            }
-            function ckGet(k) {
-                try {
-                    return document.cookie.split('; ').map(s => s.split('=')).reduce((a, [kk, v]) => (a[decodeURIComponent(kk)] = decodeURIComponent(v || ''), a), {})[k] || null;
-                } catch { return null; }
-            }
-            function lsSet(k, v) {
-                try { localStorage.setItem(k, v); return true; } catch { ckSet(k, v); return false; }
-            }
-            function lsGet(k) {
-                try { const v = localStorage.getItem(k); return v == null ? ckGet(k) : v; } catch { return ckGet(k); }
-            }
-            const ONBOARD_KEY = 'onboard_privacy_v1';
-            const PWA_DONE_KEY = 'pwa_installed_v1';
-            const PWA_LATER_KEY = 'pwa_install_later_ts';
-            const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
-            const privacyToastEl = document.getElementById('privacyToast');
-            const installToastEl = document.getElementById('installToast');
-            const privacyToast = privacyToastEl ? new bootstrap.Toast(privacyToastEl) : null;
-            const installToast = installToastEl ? new bootstrap.Toast(installToastEl) : null;
-            const privacyEnableBtn = document.getElementById('privacyEnable');
-            const privacyLaterBtn = document.getElementById('privacyLater');
-            const privacyConfirmEl = document.getElementById('privacyConfirm');
-            const privacyLink = document.getElementById('privacyLink');
-            const privacyFallback = document.getElementById('privacyFallback');
-            if (privacyLink) {
-                privacyLink.addEventListener('click', (e) => {
-                    fetch(privacyLink.href, { method: 'HEAD' }).catch(() => {
-                        e.preventDefault();
-                        privacyFallback?.classList.remove('d-none');
-                    });
-                });
-            }
-            function showPrivacyModalIfNeeded() {
-                const privacyModalEl = document.getElementById('privacyModal');
-                if (!privacyModalEl || lsGet(ONBOARD_KEY)) return;
-                const modal = new bootstrap.Modal(privacyModalEl, { backdrop: 'static', keyboard: false });
-                modal.show();
-                privacyEnableBtn?.addEventListener('click', async () => {
-                    try { await AudioUnlock.unlock(); } catch {}
-                    document.getElementById('warmup')?.click();
-                    lsSet(ONBOARD_KEY, '1');
-                    privacyConfirmEl?.classList.remove('d-none');
-                    setTimeout(() => {
-                        modal.hide();
-                        promptPWAInstall();
-                        maybeShowInstallNudgeSoon();
-                    }, 600);
-                }, { once: true });
-                privacyLaterBtn?.addEventListener('click', () => {
-                    modal.hide();
-                    setTimeout(() => privacyToast?.show(), 3000);
-                }, { once: true });
-            }
-            document.getElementById('toastEnable')?.addEventListener('click', () => {
-                privacyToast?.hide();
-                showPrivacyModalIfNeeded();
-            });
-            document.getElementById('toastLater')?.addEventListener('click', () => privacyToast?.hide());
-            let deferredPrompt = null;
-            window.addEventListener('beforeinstallprompt', (e) => {
-                e.preventDefault();
-                deferredPrompt = e;
-            });
-            document.getElementById('iosGuideImg')?.addEventListener('error', e => { e.currentTarget.classList.add('d-none'); });
-            async function promptPWAInstall() {
-                const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
-                if (deferredPrompt) {
-                    deferredPrompt.prompt();
-                    const choice = await deferredPrompt.userChoice.catch(() => ({ outcome: 'dismissed' }));
-                    if (choice?.outcome === 'accepted') lsSet(PWA_DONE_KEY, '1');
-                    deferredPrompt = null;
-                    return;
-                }
-                if (isIOS) {
-                    const iosEl = document.getElementById('iosInstall');
-                    if (iosEl) {
-                        const m = new bootstrap.Modal(iosEl, { backdrop: 'static', keyboard: false });
-                        m.show();
-                        document.getElementById('iosDone')
-                            ?.addEventListener('click', () => lsSet(PWA_DONE_KEY, '1'), { once: true });
-                        document.getElementById('iosClose')?.addEventListener('click', () => lsSet(PWA_LATER_KEY, String(Date.now())), { once: true });
-                    }
-                    return;
-                }
-                lsSet(PWA_LATER_KEY, String(Date.now()));
-            }
-            function shouldRemindInstall() {
-                if (lsGet(PWA_DONE_KEY)) return false;
-                if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return false;
-                const later = parseInt(lsGet(PWA_LATER_KEY) || '0', 10);
-                return !later || (Date.now() - later) > THREE_DAYS;
-            }
-            function maybeShowInstallNudgeSoon() {
-                if (shouldRemindInstall()) setTimeout(() => installToast?.show(), 10000);
-            }
-            document.getElementById('toastInstall')?.addEventListener('click', async () => {
-                installToast?.hide();
-                await promptPWAInstall();
-            });
-            document.getElementById('toastInstallLater')?.addEventListener('click', () => {
-                installToast?.hide();
-                lsSet(PWA_LATER_KEY, String(Date.now()));
-            });
-            if (lsGet(ONBOARD_KEY)) {
-                setTimeout(maybeShowInstallNudgeSoon, 5000);
-            } else {
-                showPrivacyModalIfNeeded();
-            }
-        });
-    </script>
+            insideNow.add(cam.name);
+          } else if (wasIn && !inZone && dM > (EXIT_M + HYSTERESIS_M)) {
+            insideNow.delete(cam.name);
+            hideSpeedSign();
+          }
+        }
+      }, err => {
+        console.warn('Geolocation error', err);
+        showDebug('GPS blocked. Use HTTPS and allow Location.', true);
+      }, { enableHighAccuracy:true, maximumAge:500, timeout:8000 });
+    }
+    function stopGPS() {
+      if (window.__watchId != null) { navigator.geolocation.clearWatch(window.__watchId); window.__watchId = null; }
+      try { map.removeLayer(userMarker); } catch {}
+      insideNow.clear(); hideSpeedSign();
+    }
+
+    /* Warmup button */
+    const warmBtn = document.getElementById('warmup');
+    const testBtn = document.getElementById('testSound');
+    let mode = 'off';
+    function applyMode() {
+      warmBtn.classList.remove('btn-off','btn-on','btn-mute');
+      warmBtn.setAttribute('aria-pressed', String(mode === 'on'));
+      if (mode === 'off') { warmBtn.classList.add('btn-off');  warmBtn.textContent = 'Sound & GPS: Off'; stopGPS(); }
+      if (mode === 'on')  { warmBtn.classList.add('btn-on');   warmBtn.textContent = 'Sound & GPS: On';  startGPS(); }
+      if (mode === 'mute'){ warmBtn.classList.add('btn-mute'); warmBtn.textContent = 'Mute: GPS Only';   startGPS(); }
+    }
+    let preloaded = false;
+    warmBtn.addEventListener('click', async () => {
+      await AudioUnlock.unlock();
+      if (!preloaded) { preloaded = true; setTimeout(() => preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3), 150); }
+      mode = (mode === 'off') ? 'on' : (mode === 'on' ? 'mute' : 'off');
+      applyMode();
+    });
+    if (DEV && testBtn) testBtn.style.display = '';
+    testBtn?.addEventListener('click', async () => {
+      await audioManifestReady; await ensureAudioReady();
+      await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
+      await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
+    });
+
+    /* Trial Nag (audio-synced close + caps) */
+    const NAG_FIRST_MS = 120000;
+    const NAG_REPEAT_MS = 15 * 60 * 1000;
+    const NAG_IMAGES = [`${BASE}/images/Ad1.png`, `${BASE}/images/Ad2.png`];
+    const NAG_AUDIO_URL = `${BASE}/images/audio/Ad1.mp3`;
+    const nagEl = document.getElementById('nag'), nagImg = document.getElementById('nagImg');
+    const nagAudio = new Audio(NAG_AUDIO_URL); nagAudio.preload = 'auto'; nagAudio.crossOrigin = 'anonymous';
+    const NAG_MAX_VISIBLE_MS_SILENT = DEV ? 1500 : 2500;
+    let nagPlaying = false, nagBuffer = null, nagBufferReady = false, lastActive = null;
+    function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+    function focusTrapOn(){ nagEl?.setAttribute('aria-hidden','false'); }
+    function focusTrapOff(){ nagEl?.setAttribute('aria-hidden','true'); }
+    async function ensureNagBuffer(){
+      if (nagBufferReady) return nagBuffer;
+      try {
+        const res = await fetch(`${NAG_AUDIO_URL}?v=${Date.now()}`, { cache:'force-cache' });
+        const ab = await res.arrayBuffer(); await AudioUnlock.unlock();
+        const ctx = AudioUnlock.ctx; nagBuffer = await ctx.decodeAudioData(ab); nagBufferReady = true;
+      } catch { nagBufferReady = false; }
+      return nagBuffer;
+    }
+    async function playNagWebAudio() {
+      const buf = await ensureNagBuffer(); if (!buf) throw new Error('no-buffer');
+      const ctx = AudioUnlock.ctx;
+      return new Promise(resolve => { const src = ctx.createBufferSource(); src.buffer = buf; src.connect(ctx.destination); src.onended = resolve; try { src.start(0); } catch { resolve(); } });
+    }
+    async function playNagAudioFallback() {
+      await AudioUnlock.unlock();
+      try { nagAudio.pause(); } catch {}
+      try { nagAudio.currentTime = 0; nagAudio.load(); await nagAudio.play(); }
+      catch { await sleep(300); try { await nagAudio.play(); } catch {} }
+    }
+    async function showNag(){
+      if (nagPlaying) return; nagPlaying = true;
+      const audioAllowed = (mode === 'on'); lastActive = document.activeElement;
+      if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random()*NAG_IMAGES.length)];
+      if (nagEl) { nagEl.style.display = 'flex'; nagEl.tabIndex = -1; nagEl.focus(); focusTrapOn(); }
+      const safeClose = () => {
+        try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
+        if (nagEl && nagEl.style.display === 'flex') { nagEl.style.display = 'none'; focusTrapOff(); lastActive?.focus?.(); }
+        nagPlaying = false;
+      };
+      try {
+        if (audioAllowed) {
+          await ensureAudioReady();
+          let watchdog = setTimeout(safeClose, 12000);
+          try { await playNagWebAudio(); } catch { await playNagAudioFallback(); await new Promise(r => { nagAudio.onended = r; }); }
+          clearTimeout(watchdog); safeClose();
+        } else {
+          setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
+        }
+      } catch { safeClose(); }
+    }
+    setTimeout(() => { if (!document.hidden) showNag(); }, NAG_FIRST_MS);
+    let nagInt = null;
+    function armNagInterval(){ clearInterval(nagInt); nagInt = setInterval(() => { if (!document.hidden) showNag(); }, NAG_REPEAT_MS); }
+    document.addEventListener('visibilitychange', armNagInterval, { passive:true }); armNagInterval();
+
+    /* Geofence alert chain */
+    async function playGeofenceAlert(name) {
+      showSpeedSign(SPEED_LIMITS[name]);
+      try { await ensureAudioReady(); } catch {}
+      maybeBeep();
+      (async () => {
+        try {
+          await audioManifestReady; await ensureAudioReady();
+          if (mode === 'mute') return;
+          const f = LOC[name];
+          const seq = [`${AUDIO_BASE}${pick(STEMS)}`, f ? `${AUDIO_BASE}${f}` : null, `${AUDIO_BASE}${pick(TAGS)}`].filter(Boolean);
+          await new Promise(r => setTimeout(r, 110));
+          for (const url of seq) { await playNow(url); }
+        } catch (e) { if (DEV) console.warn('Alert seq error', e); }
+      })();
+      if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
+    }
+
+    /* Speed limits */
+    const SPEED_LIMITS = {};
+    const SPEEDS_URL = `${DATA_BASE}/camera_speed_limits.json`;
+    function canonicalize(n) {
+      return String(n).toLowerCase()
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/[ ,]/g, ' ')
+        .replace(/\bfrom\b|\bto\b/g, ' ')
+        .replace(/^\s*the\s+/i, '')
+        .replace(/\b(street|st|avenue|ave|boulevard|blvd|road|rd|drive|dr|way)\b/gi, '')
+        .replace(/-/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+    }
+    async function loadSpeedLimits() {
+      try {
+        const rows = await fetchJSON(SPEEDS_URL);
+        const canon = new Map(rows.map(r => [canonicalize(r.name), +r.speedLimit]));
+        for (const c of cameras) {
+          const hit = canon.get(canonicalize(c.name));
+          if (Number.isFinite(hit)) SPEED_LIMITS[c.name] = hit;
+        }
+        const missing = cameras.filter(c => SPEED_LIMITS[c.name] === undefined).map(c => c.name);
+        if (missing.length) console.warn('No speed limit for:', missing);
+      } catch {}
+    }
+
+    /* Data init */
+    let cameras = [];
+    let dataReadyResolve; const dataReady = new Promise(res => (dataReadyResolve = res));
+    (async () => {
+      try {
+        const [corrRaw, poles] = await Promise.all([fetchJSON(CORRIDORS_URL), fetchJSON(POLES_URL)]);
+        const corrPolysFC = normalizeToPolygons(corrRaw);
+        cameras = (poles.features || [])
+          .filter(f => f.geometry?.type === 'Point')
+          .map(f => { const [lon, lat] = f.geometry.coordinates; return { name: f.properties?.name || 'Speed Camera', lat, lon, direction:(f.properties?.direction || 'BOTH').toUpperCase(), pole_id: f.properties?.pole_id }; });
+        const { fc: corr33, corridorForPole } = filterCorridorsToPoles(corrPolysFC, poles);
+        addCorridors(corr33);
+        addPoleMarkers(poles, corridorForPole);
+        showDebug(`Corridors: ${(corr33.features||[]).length} • Poles: ${(poles.features||[]).length}`);
+        await loadSpeedLimits();
+        dataReadyResolve();
+      } catch (e) {
+        dataReadyResolve();
+      }
+      await audioManifestReady;
+      setTimeout(() => { preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3); }, 300);
+    })();
+
+    function buildAudioUrls() {
+      const urls = [`${AUDIO_BASE}beep.mp3`];
+      for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`);
+      for (const t of TAGS) urls.push(`${AUDIO_BASE}${t}`);
+      Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`));
+      return urls;
+    }
+    async function preloadAudioList(urls, concurrency = 3) {
+      const queue = [...urls];
+      const workers = Array.from({ length: concurrency }, async () => {
+        while (queue.length) {
+          const url = queue.shift();
+          try {
+            const a = new Audio(); a.preload = 'auto'; a.src = url; a.load();
+            await new Promise(r => { a.oncanplaythrough = () => r(); setTimeout(r, 1200); });
+          } catch {}
+        }
+      });
+      await Promise.all(workers);
+    }
+
+    /* Onboarding + PWA nudges */
+    function ckSet(k, v, days = 7) { try { const d = new Date(Date.now() + days * 864e5); document.cookie = `${encodeURIComponent(k)}=${encodeURIComponent(v)}; path=/; expires=${d.toUTCString()}`; } catch {} }
+    function ckGet(k) { try { return document.cookie.split('; ').map(s => s.split('=')).reduce((a, [kk, v]) => (a[decodeURIComponent(kk)] = decodeURIComponent(v || ''), a), {})[k] || null; } catch { return null; } }
+    function lsSet(k, v) { try { localStorage.setItem(k, v); return true; } catch { ckSet(k, v); return false; } }
+    function lsGet(k) { try { const v = localStorage.getItem(k); return v == null ? ckGet(k) : v; } catch { return ckGet(k); } }
+    const ONBOARD_KEY = 'onboard_privacy_v1';
+    const PWA_DONE_KEY = 'pwa_installed_v1';
+    const PWA_LATER_KEY = 'pwa_install_later_ts';
+    const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+    const privacyToastEl = document.getElementById('privacyToast');
+    const installToastEl = document.getElementById('installToast');
+    const privacyToast = privacyToastEl ? new bootstrap.Toast(privacyToastEl) : null;
+    const installToast = installToastEl ? new bootstrap.Toast(installToastEl) : null;
+    const privacyEnableBtn = document.getElementById('privacyEnable');
+    const privacyLaterBtn = document.getElementById('privacyLater');
+    const privacyConfirmEl = document.getElementById('privacyConfirm');
+    const privacyLink = document.getElementById('privacyLink');
+    const privacyFallback = document.getElementById('privacyFallback');
+    if (privacyLink) {
+      privacyLink.addEventListener('click', (e) => {
+        fetch(privacyLink.href, { method:'HEAD' }).catch(() => { e.preventDefault(); privacyFallback?.classList.remove('d-none'); });
+      });
+    }
+    function showPrivacyModalIfNeeded() {
+      const privacyModalEl = document.getElementById('privacyModal');
+      if (!privacyModalEl || lsGet(ONBOARD_KEY)) return;
+      const modal = new bootstrap.Modal(privacyModalEl, { backdrop:'static', keyboard:false });
+      modal.show();
+      privacyEnableBtn?.addEventListener('click', async () => {
+        try { await AudioUnlock.unlock(); } catch {}
+        document.getElementById('warmup')?.click();
+        lsSet(ONBOARD_KEY, '1');
+        privacyConfirmEl?.classList.remove('d-none');
+        setTimeout(() => { modal.hide(); promptPWAInstall(); maybeShowInstallNudgeSoon(); }, 600);
+      }, { once:true });
+      privacyLaterBtn?.addEventListener('click', () => { modal.hide(); setTimeout(() => privacyToast?.show(), 3000); }, { once:true });
+    }
+    document.getElementById('toastEnable')?.addEventListener('click', () => { privacyToast?.hide(); showPrivacyModalIfNeeded(); });
+    document.getElementById('toastLater')?.addEventListener('click', () => privacyToast?.hide());
+
+    let deferredPrompt = null;
+    addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; });
+    document.getElementById('iosGuideImg')?.addEventListener('error', e => { e.currentTarget.classList.add('d-none'); });
+
+    async function promptPWAInstall() {
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !window.MSStream;
+      if (deferredPrompt) {
+        deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice.catch(() => ({ outcome:'dismissed' }));
+        if (choice?.outcome === 'accepted') lsSet(PWA_DONE_KEY, '1');
+        deferredPrompt = null; return;
+      }
+      if (isIOS) {
+        const iosEl = document.getElementById('iosInstall');
+        if (iosEl) {
+          const m = new bootstrap.Modal(iosEl, { backdrop:'static', keyboard:false });
+          m.show();
+          document.getElementById('iosDone')?.addEventListener('click', () => lsSet(PWA_DONE_KEY, '1'), { once:true });
+          document.getElementById('iosClose')?.addEventListener('click', () => lsSet(PWA_LATER_KEY, String(Date.now())), { once:true });
+        }
+        return;
+      }
+      lsSet(PWA_LATER_KEY, String(Date.now()));
+    }
+    function shouldRemindInstall() {
+      if (lsGet(PWA_DONE_KEY)) return false;
+      if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) return false;
+      const later = parseInt(lsGet(PWA_LATER_KEY) || '0', 10);
+      return !later || (Date.now() - later) > THREE_DAYS;
+    }
+    function maybeShowInstallNudgeSoon(){ if (shouldRemindInstall()) setTimeout(() => installToast?.show(), 10000); }
+    document.getElementById('toastInstall')?.addEventListener('click', async () => { installToast?.hide(); await promptPWAInstall(); });
+    document.getElementById('toastInstallLater')?.addEventListener('click', () => { installToast?.hide(); lsSet(PWA_LATER_KEY, String(Date.now())); });
+    if (lsGet(ONBOARD_KEY)) setTimeout(maybeShowInstallNudgeSoon, 5000); else showPrivacyModalIfNeeded();
+
+    /* Helpers */
+    function buildAudioUrls(){ const urls=[`${AUDIO_BASE}beep.mp3`]; for (const s of STEMS) urls.push(`${AUDIO_BASE}${s}`); for (const t of TAGS) urls.push(`${AUDIO_BASE}${t}`); Object.values(LOC).forEach(f => urls.push(`${AUDIO_BASE}${f}`)); return urls; }
+    addEventListener('pagehide', stopGPS, { once:true });
+    applyMode();
+  });
+  </script>
 </body>
 </html>
