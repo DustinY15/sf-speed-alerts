@@ -8,7 +8,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link rel="apple-touch-icon" href="icons/icon-192.png">
     <link rel="manifest" id="app-manifest" href="">
-    <script>
+    <script> 
         (function () { 
             const REPO = 'sf-speed-alerts'; 
             const path = location.pathname.replace(/\/+$/, ''); 
@@ -19,12 +19,12 @@
                 const idx = parts.lastIndexOf(REPO); 
                 if (idx > -1) base = '/' + parts.slice(1, idx + 1).join('/'); 
             } 
-            // Make globals available everywhere 
             window.BASE = base; 
             window.DATA_BASE = `${base}/data`; 
             window.DEV = /[?&]dev=1\b/.test(location.search); 
-            document.getElementById('app-manifest')?.setAttribute('href', `${base}/manifest.json`); 
-        })();
+            const m = document.getElementById('app-manifest'); 
+            if (m) m.setAttribute('href', `${base}/manifest.json`); 
+        })(); 
     </script>
     <title>SF Speed Cameras - Alerts & Map</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -41,9 +41,6 @@
             --overlay-top: 10px;
             --shell-max: 520px;
             --overlay-paid-offset: -36px;
-
-            /* Hotfix: dynamic viewport */
-            --vh: 100vh; /* will be corrected by JS */
         }
         html, body { height:100%; }
         body{
@@ -63,8 +60,7 @@
             left:0;
             top:0;
             width:100vw;
-            /* Hotfix: use corrected viewport height */
-            height:var(--vh);
+            height:100dvh;
             z-index:-3;
             overflow:hidden;
         }
@@ -138,6 +134,7 @@
         .speed-sign .value{ font-weight:900; text-align:center; font-size:clamp(56px, 16vw, 110px); line-height:1; }
         .speed-sign .capsule{ margin-top:8px; text-align:center; font-size:12px; font-weight:700; letter-spacing:.04em; color:#111; background:#eee; border-radius:999px; padding:4px 10px; display:none; }
         .speed-sign.unknown .capsule{ display:inline-block; }
+        /* Dim the sign when using fallback MPH */
         .speed-sign.fallback .sign { opacity:.85; }
         .nag-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,.55); display:none; align-items:center; justify-content:center; z-index:60; }
         .nag-wrap{ position:relative; transform:translateY(30px); }
@@ -158,6 +155,7 @@
             display:none;
         }
         .dev-badge.show { display:inline-block; }
+        /* Toast container */
         .toast-container {
             position: fixed;
             right: 12px;
@@ -208,7 +206,6 @@
         </div>
     </div>
     <div id="devBadge" class="dev-badge">DEV BUILD</div>
-
     <!-- Privacy Modal -->
     <div class="modal fade" id="privacyModal" tabindex="-1" aria-hidden="true" aria-labelledby="privacyTitle">
         <div class="modal-dialog modal-dialog-centered">
@@ -241,7 +238,6 @@
             </div>
         </div>
     </div>
-
     <!-- iOS Install Modal -->
     <div class="modal fade" id="iosInstall" tabindex="-1" aria-labelledby="iosInstallLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -264,7 +260,6 @@
             </div>
         </div>
     </div>
-
     <!-- Toasts -->
     <div class="toast-container p-2">
         <div id="privacyToast" class="toast text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="6000">
@@ -282,43 +277,35 @@
             </div>
         </div>
     </div>
-
     <footer>
-        <small>&copy; 2025 SF Speed Cameras • <a id="privacyFooter" href="/privacy.html" class="text-white-50" target="_blank" rel="noopener">Privacy</a> • <a id="contactFooter" href="/contact.html" class="text-white-50" target="_blank" rel="noopener">Contact</a></small>
+        <small>&copy; 2025 SF Speed Cameras • <a href="/privacy.html" class="text-white-50" target="_blank" rel="noopener">Privacy</a> • <a href="/contact.html" class="text-white-50" target="_blank" rel="noopener">Contact</a></small>
     </footer>
-
-    <!-- Main App JS (unchanged logic) -->
     <script>
         window.addEventListener('DOMContentLoaded', () => {
             // Bring globals into local constants for convenience
             const BASE = window.BASE || '';
             const DATA_BASE = window.DATA_BASE || `${BASE}/data`;
             const DEV = !!window.DEV;
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
             // Fix footer & modal links to respect BASE
             document.querySelectorAll('a[href="/privacy.html"]').forEach(a => a.href = `${BASE}/privacy.html`);
             document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
             const plEl = document.getElementById('privacyLink');
             if (plEl) plEl.href = `${BASE}/privacy.html`;
-
             // Register service worker (for PWA/offline)
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register(`${BASE}/sw.js`).catch(e => {
                     if (DEV) console.warn('SW failed', e);
                 });
             }
-
             // Optional: show DEV badge
             document.getElementById('devBadge')?.classList.toggle('show', DEV);
-
             try { history.scrollRestoration = 'manual'; } catch {}
             if (location.hash) { history.replaceState(null, '', location.pathname); }
             window.addEventListener('load', () => {
                 window.scrollTo(0, 0);
                 if (document.activeElement) document.activeElement.blur();
             }, { once: true });
-
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             /* -------- Background video (autoplay-safe) -------- */
             const bg = document.getElementById('bgvid');
             const srcEl = document.getElementById('bgvidSrc');
@@ -336,22 +323,12 @@
                 bg.addEventListener('loadeddata', () => bg.removeAttribute('poster'), { once: true });
                 retryPlay();
             }
-
             /* -------- Overlay PNGs + dynamic spacing -------- */
-            const paidDesktop = `${BASE}/images/Copyblockdesktop_paid.png`;
-            const paidMobile = `${BASE}/images/Copyblockmobile_paid.png`;
-            const plainDesktop = `${BASE}/images/Copyblockdesktop.png`;
-            const plainMobile = `${BASE}/images/Copyblockmobile.png`;
             const ovM = document.getElementById('ovPaidSrcM');
+            if (ovM) ovM.srcset = `${BASE}/images/Copyblockmobile_paid.png`;
             const paidImg = document.getElementById('ovPaidImg');
-            if (ovM) ovM.srcset = paidMobile;
-            if (paidImg) {
-                paidImg.src = paidDesktop;
-                paidImg.onerror = () => {
-                    paidImg.onerror = null;
-                    paidImg.src = plainDesktop;
-                    if (ovM) ovM.srcset = plainMobile;
-                };
+            if (paidImg){
+                paidImg.src = `${BASE}/images/Copyblockdesktop_paid.png`;
                 paidImg.addEventListener('load', () => {
                     paidImg.style.transform = `translateY(var(--overlay-paid-offset))`;
                     requestAnimationFrame(() => requestAnimationFrame(applyOverlaySpacing));
@@ -379,7 +356,6 @@
             addEventListener('resize', reflowOverlay, { passive: true });
             addEventListener('orientationchange', reflowOverlay);
             if (window.visualViewport) window.visualViewport.addEventListener('resize', reflowOverlay, { passive: true });
-
             /* -------- Stripe -------- */
             const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
             const payCTA = document.getElementById('payCTA');
@@ -387,8 +363,7 @@
                 e.preventDefault();
                 window.open(STRIPE_URL, '_blank', 'noopener,noreferrer');
             });
-
-            /* Fit BG container height (debounced) — original (we’ll override with hotfix too) */
+            /* Fit BG container height (debounced) */
             const sizeBG = () => {
                 const el = document.querySelector('.video-bg');
                 if (!el) return;
@@ -402,7 +377,6 @@
             addEventListener('resize', debouncedSizeBG, { passive: true });
             addEventListener('orientationchange', debouncedSizeBG);
             sizeBG();
-
             /* -------- Debug badge + fetch wrapper -------- */
             function showDebug(msg, isErr = false) {
                 let el = document.getElementById('debugBadge');
@@ -428,12 +402,11 @@
                     throw e;
                 }
             }
-
             /* -------- Map -------- */
             let map, userMarker;
             const poleLayer = L.layerGroup();
             const areaLayer = L.layerGroup();
-            const corridorPolys = [];
+            const corridorPolys = []; // polygons for in-zone checks
             function initMap() {
                 map = L.map('map', { zoomControl: true }).setView([37.7749, -122.4194], 12);
                 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(map);
@@ -444,7 +417,6 @@
                 const dot = L.divIcon({ className: 'loc-dot' });
                 userMarker = L.marker([37.7749, -122.4194], { icon: dot });
             }
-
             /* -------- Audio unlock + helpers -------- */
             const AUDIO_BASE = `${BASE}/images/audio/`;
             const AudioUnlock = (() => {
@@ -466,7 +438,6 @@
                 window.addEventListener('pointerdown', () => unlock(), { once: true, passive: true });
                 return { unlock, get unlocked() { return unlocked; }, get ctx() { return ctx; } };
             })();
-
             // ---- Speed-sign chirp ----
             const BEEP_URL = `${AUDIO_BASE}beep.mp3`;
             let beepBuffer = null, beepEl = null;
@@ -516,7 +487,6 @@
                 } catch {}
             }
             window.addEventListener('touchend', () => AudioUnlock.unlock(), { once: true, passive: true });
-
             let player = new Audio();
             function isStandalone() {
                 return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
@@ -563,7 +533,6 @@
                     });
                 });
             }
-
             /* -------- Audio lists (stems/tags/locations) -------- */
             const STEMS = Array.from({ length: 11 }, (_, i) => `speed_camera_ahead_${i + 1}.mp3`);
             const TAGS = [
@@ -622,7 +591,6 @@
                 "Monterey Blvd from Edna to Congo St": "monterey_blvd_from_edna_to_congo_st.mp3",
                 "Sloat Blvd from 41st Ave to Skyline Blvd": "sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
             };
-
             // ---- Self-healing audio manifest (prune 404s) ----
             async function urlExists(url) {
                 try {
@@ -665,7 +633,6 @@
                 const f = LOC[name];
                 if (f) playNow(`${AUDIO_BASE}${f}`);
             }
-
             /* -------- Poles & Corridors -------- */
             const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
             const POLES_URL = `${DATA_BASE}/poles.json`;
@@ -676,30 +643,30 @@
                 const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLon / 2) ** 2;
                 return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
             }
-            function toDeg(r) { return r * 180 / Math.PI; }
-            function bearingDeg(aLat, aLon, bLat, bLon) {
-                const toRad = d => d * Math.PI / 180;
-                const dLon = toRad(bLon - aLon);
-                const y = Math.sin(dLon) * Math.cos(toRad(bLat));
-                const x = Math.cos(toRad(aLat)) * Math.sin(toRad(bLat)) - Math.sin(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.cos(dLon);
-                return (toDeg(Math.atan2(y, x)) + 360) % 360;
-            }
-            function angDiff(a, b) {
-                let d = Math.abs(a - b) % 360;
-                return d > 180 ? 360 - d : d;
-            }
-            function headingIsOk(posHeading, fromLat, fromLon, toLat, toLon, cameraDir) {
-                if (typeof posHeading !== 'number' || !Number.isFinite(posHeading)) return true;
-                const toCam = bearingDeg(fromLat, fromLon, toLat, toLon);
-                if (angDiff(posHeading, toCam) > 70) return false;
-                const h = posHeading;
-                switch ((cameraDir || 'BOTH').toUpperCase()) {
-                    case 'NB': return (h > 315 || h < 45);
-                    case 'SB': return (h > 135 && h < 225);
-                    case 'EB': return (h > 45 && h < 135);
-                    case 'WB': return (h > 225 && h < 315);
-                    default: return true;
-                }
+            function toDeg(r){ return r * 180 / Math.PI; } 
+            function bearingDeg(aLat,aLon,bLat,bLon){ 
+                const toRad = d => d * Math.PI / 180; 
+                const dLon = toRad(bLon - aLon); 
+                const y = Math.sin(dLon)*Math.cos(toRad(bLat)); 
+                const x = Math.cos(toRad(aLat))*Math.sin(toRad(bLat)) - Math.sin(toRad(aLat))*Math.cos(toRad(bLat))*Math.cos(dLon); 
+                return (toDeg(Math.atan2(y, x)) + 360) % 360; 
+            } 
+            function angDiff(a,b){ 
+                let d = Math.abs(a-b)%360; 
+                return d>180?360-d:d; 
+            } 
+            function headingIsOk(posHeading, fromLat,fromLon,toLat,toLon,cameraDir){ 
+                if (typeof posHeading !== 'number' || !Number.isFinite(posHeading)) return true; 
+                const toCam = bearingDeg(fromLat,fromLon,toLat,toLon); 
+                if (angDiff(posHeading, toCam) > 70) return false; 
+                const h = posHeading; 
+                switch ((cameraDir || 'BOTH').toUpperCase()) { 
+                    case 'NB': return (h > 315 || h < 45); 
+                    case 'SB': return (h > 135 && h < 225); 
+                    case 'EB': return (h > 45 && h < 135); 
+                    case 'WB': return (h > 225 && h < 315); 
+                    default: return true; 
+                } 
             }
             function nearestCameraName(lat, lon) {
                 let best = null, bestD = Infinity;
@@ -846,7 +813,6 @@
                     map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
                 }
             }
-
             /* -------- Speed sign (fallback + timers) -------- */
             let speedSignTO = null;
             const DEFAULT_LIMIT = 30;
@@ -875,7 +841,6 @@
                 speedSignTO = null;
                 setTimeout(() => { box.hidden = true; }, 200);
             }
-
             /* -------- Gates / timing -------- */
             const EXIT_M = 150;
             const HYSTERESIS_M = 20;
@@ -883,10 +848,9 @@
             const MIN_SPEED_MPS = 2.2;
             const COOLDOWN_MS = 10000;
             const REARM_M = DEV ? 50 : 100;
-            const PREARM_EXTRA_M = 120;
             function enterDistanceM(speedMps) {
-                const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 24.6;
-                return Math.max(250, Math.min(700, Math.round(v * 18)));
+                const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.35;
+                return Math.max(150, Math.min(450, Math.round(v * 11)));
             }
             const insideNow = new Set(), lastAlertAt = new Map();
             const lastAlertPos = new Map();
@@ -909,7 +873,6 @@
                     });
                 } catch { return false; }
             }
-
             async function startGPS() {
                 if (!('geolocation' in navigator)) return;
                 if (window.__watchId != null) return;
@@ -917,6 +880,8 @@
                 if (!map.hasLayer(userMarker)) userMarker.addTo(map);
                 window.__watchId = navigator.geolocation.watchPosition(async pos => {
                     const { latitude, longitude } = pos.coords;
+                    // NEW: always update the on-map user marker (so you *see* GPS even if accuracy is high)
+                    userMarker.setLatLng([latitude, longitude]);
                     if (!passesGates(pos.coords)) {
                         if (DEV) console.debug('[DEV] gates blocked', { acc: Math.round((pos.coords.accuracy ?? 0) * 10) / 10, spd: Math.round((pos.coords.speed ?? 0) * 10) / 10, lat: +(latitude.toFixed(3)), lon: +(longitude.toFixed(3)) });
                         return;
@@ -927,10 +892,8 @@
                     const now = Date.now();
                     for (const cam of cameras) {
                         const dM = distKm(latitude, longitude, cam.lat, cam.lon) * 1000;
-                        const nearPoint = dM <= Math.max(enterDistanceM(pos.coords.speed), PREARM_EXTRA_M);
-                        const corridorMatch = inCorridor && (nearestName === cam.name);
-                        const headingOk = headingIsOk(pos.coords.heading, latitude, longitude, cam.lat, cam.lon, cam.direction);
-                        const inZone = headingOk && (nearPoint || corridorMatch);
+                        const nearPoint = dM <= enterDistanceM(pos.coords.speed);
+                        const inZone = nearPoint || (inCorridor && (nearestName === cam.name));
                         const wasIn = insideNow.has(cam.name);
                         const movedEnough = (() => {
                             const p = lastAlertPos.get(cam.name);
@@ -965,7 +928,6 @@
                 insideNow.clear();
                 hideSpeedSign();
             }
-
             /* -------- Warmup button -------- */
             const warmBtn = document.getElementById('warmup');
             const testBtn = document.getElementById('testSound');
@@ -1006,7 +968,6 @@
                 await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
                 await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
             });
-
             /* -------- Trial Nag (audio-synced close + caps) -------- */
             const NAG_FIRST_MS = 120000;
             const NAG_REPEAT_MS = 15 * 60 * 1000;
@@ -1018,9 +979,94 @@
             const nagAudio = new Audio(NAG_AUDIO_URL);
             nagAudio.preload = 'auto';
             nagAudio.crossOrigin = 'anonymous';
-
-            // (we'll hotfix the showNag timing below without touching other app logic)
-
+            const NAG_MAX_VISIBLE_MS_AUDIO = DEV ? 2000 : 4500;
+            const NAG_MAX_VISIBLE_MS_SILENT = DEV ? 1500 : 2500;
+            let nagPlaying = false, nagBuffer = null, nagBufferReady = false, lastActive = null;
+            function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+            function focusTrapOn() { nagEl?.setAttribute('aria-hidden', 'false'); }
+            function focusTrapOff() { nagEl?.setAttribute('aria-hidden', 'true'); }
+            async function ensureNagBuffer() {
+                if (nagBufferReady) return nagBuffer;
+                try {
+                    const res = await fetch(`${NAG_AUDIO_URL}?v=${Date.now()}`, { cache: 'force-cache' });
+                    const ab = await res.arrayBuffer();
+                    await AudioUnlock.unlock();
+                    const ctx = AudioUnlock.ctx;
+                    nagBuffer = await ctx.decodeAudioData(ab);
+                    nagBufferReady = true;
+                } catch (e) { nagBufferReady = false; }
+                return nagBuffer;
+            }
+            async function playNagWebAudio() {
+                const buf = await ensureNagBuffer();
+                if (!buf) throw new Error('no-buffer');
+                const ctx = AudioUnlock.ctx;
+                return new Promise(resolve => {
+                    const src = ctx.createBufferSource();
+                    src.buffer = buf;
+                    src.connect(ctx.destination);
+                    src.onended = resolve;
+                    try { src.start(0); } catch { resolve(); }
+                });
+            }
+            async function playNagAudioFallback() {
+                await AudioUnlock.unlock();
+                try { nagAudio.pause(); } catch {}
+                try {
+                    nagAudio.currentTime = 0;
+                    nagAudio.load();
+                    await nagAudio.play();
+                } catch {
+                    await sleep(300);
+                    try { await nagAudio.play(); } catch {}
+                }
+            }
+            async function showNag() {
+                if (nagPlaying) return;
+                nagPlaying = true;
+                const audioAllowed = (mode === 'on');
+                lastActive = document.activeElement;
+                if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random() * NAG_IMAGES.length)];
+                if (nagEl) {
+                    nagEl.style.display = 'flex';
+                    nagEl.tabIndex = -1;
+                    nagEl.focus();
+                    focusTrapOn();
+                }
+                const safeClose = () => {
+                    try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
+                    if (nagEl && nagEl.style.display === 'flex') {
+                        nagEl.style.display = 'none';
+                        focusTrapOff();
+                        lastActive?.focus?.();
+                    }
+                    nagPlaying = false;
+                };
+                try {
+                    if (audioAllowed) {
+                        await ensureAudioReady();
+                        let watchdog = setTimeout(safeClose, 12000);
+                        try {
+                            await playNagWebAudio();
+                        } catch {
+                            await playNagAudioFallback();
+                            await new Promise(r => { nagAudio.onended = r; });
+                        }
+                        clearTimeout(watchdog);
+                        safeClose();
+                    } else {
+                        setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
+                    }
+                } catch { safeClose(); }
+            }
+            setTimeout(() => { if (!document.hidden) showNag(); }, NAG_FIRST_MS);
+            let nagInt = null;
+            function armNagInterval() {
+                clearInterval(nagInt);
+                nagInt = setInterval(() => { if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
+            }
+            document.addEventListener('visibilitychange', armNagInterval, { passive: true });
+            armNagInterval();
             /* -------- Geofence alert chain (instant start) -------- */
             async function playGeofenceAlert(name) {
                 showSpeedSign(SPEED_LIMITS[name]);
@@ -1047,7 +1093,6 @@
                 })();
                 if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
             }
-
             /* -------- Speed limits loader -------- */
             const SPEED_LIMITS = {};
             const SPEEDS_URL = `${DATA_BASE}/camera_speed_limits.json`;
@@ -1073,7 +1118,6 @@
                     if (missing.length) console.warn('No speed limit for:', missing);
                 } catch (e) { /* file may not exist; ignore */ }
             }
-
             /* -------- Start everything -------- */
             initMap();
             let cameras = [];
@@ -1132,8 +1176,6 @@
             }
             addEventListener('pagehide', stopGPS, { once: true });
             applyMode();
-
-            /* -------- Onboarding + PWA layer -------- */
             function ckSet(k, v, days = 7) {
                 try {
                     const d = new Date(Date.now() + days * 864e5);
@@ -1155,12 +1197,10 @@
             const PWA_DONE_KEY = 'pwa_installed_v1';
             const PWA_LATER_KEY = 'pwa_install_later_ts';
             const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
-
             const privacyToastEl = document.getElementById('privacyToast');
             const installToastEl = document.getElementById('installToast');
             const privacyToast = privacyToastEl ? new bootstrap.Toast(privacyToastEl) : null;
             const installToast = installToastEl ? new bootstrap.Toast(installToastEl) : null;
-
             const privacyEnableBtn = document.getElementById('privacyEnable');
             const privacyLaterBtn = document.getElementById('privacyLater');
             const privacyConfirmEl = document.getElementById('privacyConfirm');
@@ -1200,7 +1240,6 @@
                 showPrivacyModalIfNeeded();
             });
             document.getElementById('toastLater')?.addEventListener('click', () => privacyToast?.hide());
-
             let deferredPrompt = null;
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
@@ -1252,104 +1291,6 @@
                 showPrivacyModalIfNeeded();
             }
         });
-    </script>
-
-    <!-- ========= HOTFIX MODULE (add-only) ========= -->
-    <script>
-    (function hotfix(){
-        // ---- 0) Config knobs (safe to tweak) ----
-        const FORCE_LIFT_PX = 400;                // pulls content up ~400px
-        const VH_LOCK_INTERVAL_MS = 800;          // how long to repeatedly correct vh on first paint
-        const NAG_MAX_VISIBLE_MS_AUDIO = /[?&]dev=1\b/.test(location.search) ? 2000 : 4500;
-        const NAG_MAX_VISIBLE_MS_SILENT = /[?&]dev=1\b/.test(location.search) ? 1500 : 2500;
-
-        // ---- 1) Fix viewport/scale once and for all ----
-        function setVH() {
-            const h = Math.round((window.visualViewport?.height || window.innerHeight));
-            document.documentElement.style.setProperty('--vh', h + 'px');
-            // Also keep the bg container synced directly (defensive)
-            const el = document.querySelector('.video-bg');
-            if (el) el.style.height = h + 'px';
-        }
-        setVH();
-        let vhTicks = 0;
-        const vhTimer = setInterval(() => {
-            setVH();
-            vhTicks++;
-            if (vhTicks > 4) clearInterval(vhTimer); // a few paints after load
-        }, VH_LOCK_INTERVAL_MS);
-        window.addEventListener('resize', setVH, {passive:true});
-        window.visualViewport?.addEventListener('resize', setVH, {passive:true});
-        window.addEventListener('orientationchange', () => setTimeout(setVH, 50), {passive:true});
-
-        // ---- 2) Pull content up by FORCE_LIFT_PX without touching your logic ----
-        function liftContent() {
-            const root = document.documentElement;
-            const css = getComputedStyle(root);
-            const curMobile = parseFloat(css.getPropertyValue('--paid-offset-mobile')) || 220;
-            const curDesktop = parseFloat(css.getPropertyValue('--paid-offset-desktop')) || 330;
-            const newMobile = Math.max(120, curMobile - FORCE_LIFT_PX);
-            const newDesktop = Math.max(200, curDesktop - FORCE_LIFT_PX);
-            root.style.setProperty('--paid-offset-mobile', newMobile + 'px');
-            root.style.setProperty('--paid-offset-desktop', newDesktop + 'px');
-        }
-        // Run right away and also after layout recalcs your app triggers
-        window.addEventListener('DOMContentLoaded', () => {
-            liftContent();
-            setTimeout(liftContent, 50);
-            setTimeout(liftContent, 200);
-        });
-        window.addEventListener('resize', () => setTimeout(liftContent, 50), {passive:true});
-        window.visualViewport?.addEventListener('resize', () => setTimeout(liftContent, 50), {passive:true});
-        window.addEventListener('orientationchange', () => setTimeout(liftContent, 150), {passive:true});
-
-        // ---- 3) Make the trial nag stay up until audio ends (or cap) ----
-        // We can't easily replace your internal function safely, so we control the element display duration from the outside.
-        const nagEl = document.getElementById('nag');
-        const nagAudio = new Audio((window.BASE||'') + '/images/audio/Ad1.mp3');
-        nagAudio.preload = 'auto';
-        nagAudio.crossOrigin = 'anonymous';
-
-        // When the nag opens, ensure it doesn't vanish instantly; close after audio or cap.
-        const observer = new MutationObserver((list) => {
-            for (const m of list) {
-                if (m.type === 'attributes' && m.attributeName === 'style' && nagEl.style.display === 'flex') {
-                    // Nag just opened
-                    const modeBtn = document.getElementById('warmup');
-                    const modeText = modeBtn?.textContent || '';
-                    const audioAllowed = /Sound & GPS: On/i.test(modeText); // mirrors your logic
-
-                    // Clear any prior handlers
-                    try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
-
-                    let closed = false;
-                    const safeClose = () => {
-                        if (closed) return;
-                        closed = true;
-                        try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
-                        if (nagEl.style.display === 'flex') nagEl.style.display = 'none';
-                    };
-
-                    if (audioAllowed) {
-                        // Try to actually play audio, then close on end, else cap.
-                        nagAudio.src = (window.BASE||'') + '/images/audio/Ad1.mp3?v=' + Date.now();
-                        const capTO = setTimeout(safeClose, NAG_MAX_VISIBLE_MS_AUDIO);
-                        nagAudio.play().then(() => {
-                            nagAudio.onended = () => { clearTimeout(capTO); safeClose(); };
-                        }).catch(() => {
-                            clearTimeout(capTO);
-                            setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
-                        });
-                    } else {
-                        // No audio allowed -> short, predictable display
-                        setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
-                    }
-                    break;
-                }
-            }
-        });
-        if (nagEl) observer.observe(nagEl, { attributes: true, attributeFilter: ['style'] });
-    })();
     </script>
 </body>
 </html>
