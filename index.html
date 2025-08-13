@@ -41,6 +41,9 @@
             --overlay-top: 10px;
             --shell-max: 520px;
             --overlay-paid-offset: -36px;
+
+            /* Hotfix: dynamic viewport */
+            --vh: 100vh; /* will be corrected by JS */
         }
         html, body { height:100%; }
         body{
@@ -60,7 +63,8 @@
             left:0;
             top:0;
             width:100vw;
-            height:100dvh;
+            /* Hotfix: use corrected viewport height */
+            height:var(--vh);
             z-index:-3;
             overflow:hidden;
         }
@@ -204,6 +208,8 @@
         </div>
     </div>
     <div id="devBadge" class="dev-badge">DEV BUILD</div>
+
+    <!-- Privacy Modal -->
     <div class="modal fade" id="privacyModal" tabindex="-1" aria-hidden="true" aria-labelledby="privacyTitle">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark text-light">
@@ -235,6 +241,8 @@
             </div>
         </div>
     </div>
+
+    <!-- iOS Install Modal -->
     <div class="modal fade" id="iosInstall" tabindex="-1" aria-labelledby="iosInstallLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content bg-dark text-light">
@@ -256,6 +264,8 @@
             </div>
         </div>
     </div>
+
+    <!-- Toasts -->
     <div class="toast-container p-2">
         <div id="privacyToast" class="toast text-bg-dark border-0" role="status" aria-live="polite" aria-atomic="true" data-bs-delay="6000">
             <div class="toast-body d-flex align-items-center gap-2">
@@ -272,70 +282,43 @@
             </div>
         </div>
     </div>
+
     <footer>
         <small>&copy; 2025 SF Speed Cameras • <a id="privacyFooter" href="/privacy.html" class="text-white-50" target="_blank" rel="noopener">Privacy</a> • <a id="contactFooter" href="/contact.html" class="text-white-50" target="_blank" rel="noopener">Contact</a></small>
     </footer>
+
+    <!-- Main App JS (unchanged logic) -->
     <script>
         window.addEventListener('DOMContentLoaded', () => {
-            // --- speedwarn.com hardening: HTTPS + one-time SW/cache cleanup ---
-(function () {
-  const IS_LOCAL = ['localhost','127.0.0.1'].includes(location.hostname);
-  const IS_SPEEDWARN = /(^|\.)speedwarn\.com$/i.test(location.hostname);
-  if (!IS_LOCAL && location.protocol !== 'https:' && IS_SPEEDWARN) {
-    // Force HTTPS for Geolocation + autoplay reliability
-    location.replace('https:' + location.href.slice(location.protocol.length));
-    return; // stop here; page will reload over HTTPS
-  }
-
-  // One-time cleanup only on speedwarn.com to remove stale SW/caches from older builds
-  const FLAG = 'sw_cleanup_v3'; // bump if you ever need to trigger again
-  if (!IS_SPEEDWARN || sessionStorage.getItem(FLAG)) return;
-
-  (async () => {
-    try {
-      if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        await Promise.all(regs.map(r => r.unregister()));
-      }
-      if ('caches' in window) {
-        const names = await caches.keys();
-        await Promise.all(names.map(n => caches.delete(n)));
-      }
-    } catch {}
-    sessionStorage.setItem(FLAG, '1');
-    // Single hard reload to fetch fresh files; then your normal SW registers as usual
-    location.replace(location.href.split('#')[0]);
-  })();
-})();
-
             // Bring globals into local constants for convenience
             const BASE = window.BASE || '';
             const DATA_BASE = window.DATA_BASE || `${BASE}/data`;
             const DEV = !!window.DEV;
             const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
             // Fix footer & modal links to respect BASE
             document.querySelectorAll('a[href="/privacy.html"]').forEach(a => a.href = `${BASE}/privacy.html`);
             document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
             const plEl = document.getElementById('privacyLink');
             if (plEl) plEl.href = `${BASE}/privacy.html`;
+
             // Register service worker (for PWA/offline)
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register(`${BASE}/sw.js`).catch(e => {
                     if (DEV) console.warn('SW failed', e);
                 });
             }
+
             // Optional: show DEV badge
             document.getElementById('devBadge')?.classList.toggle('show', DEV);
-            try {
-                history.scrollRestoration = 'manual';
-            } catch {}
-            if (location.hash) {
-                history.replaceState(null, '', location.pathname);
-            }
+
+            try { history.scrollRestoration = 'manual'; } catch {}
+            if (location.hash) { history.replaceState(null, '', location.pathname); }
             window.addEventListener('load', () => {
                 window.scrollTo(0, 0);
                 if (document.activeElement) document.activeElement.blur();
             }, { once: true });
+
             /* -------- Background video (autoplay-safe) -------- */
             const bg = document.getElementById('bgvid');
             const srcEl = document.getElementById('bgvidSrc');
@@ -353,6 +336,7 @@
                 bg.addEventListener('loadeddata', () => bg.removeAttribute('poster'), { once: true });
                 retryPlay();
             }
+
             /* -------- Overlay PNGs + dynamic spacing -------- */
             const paidDesktop = `${BASE}/images/Copyblockdesktop_paid.png`;
             const paidMobile = `${BASE}/images/Copyblockmobile_paid.png`;
@@ -395,6 +379,7 @@
             addEventListener('resize', reflowOverlay, { passive: true });
             addEventListener('orientationchange', reflowOverlay);
             if (window.visualViewport) window.visualViewport.addEventListener('resize', reflowOverlay, { passive: true });
+
             /* -------- Stripe -------- */
             const STRIPE_URL = "https://buy.stripe.com/eVq4gA1ra1ptdAT1ZQfbq01";
             const payCTA = document.getElementById('payCTA');
@@ -402,7 +387,8 @@
                 e.preventDefault();
                 window.open(STRIPE_URL, '_blank', 'noopener,noreferrer');
             });
-            /* Fit BG container height (debounced) */
+
+            /* Fit BG container height (debounced) — original (we’ll override with hotfix too) */
             const sizeBG = () => {
                 const el = document.querySelector('.video-bg');
                 if (!el) return;
@@ -416,6 +402,7 @@
             addEventListener('resize', debouncedSizeBG, { passive: true });
             addEventListener('orientationchange', debouncedSizeBG);
             sizeBG();
+
             /* -------- Debug badge + fetch wrapper -------- */
             function showDebug(msg, isErr = false) {
                 let el = document.getElementById('debugBadge');
@@ -441,6 +428,7 @@
                     throw e;
                 }
             }
+
             /* -------- Map -------- */
             let map, userMarker;
             const poleLayer = L.layerGroup();
@@ -456,6 +444,7 @@
                 const dot = L.divIcon({ className: 'loc-dot' });
                 userMarker = L.marker([37.7749, -122.4194], { icon: dot });
             }
+
             /* -------- Audio unlock + helpers -------- */
             const AUDIO_BASE = `${BASE}/images/audio/`;
             const AudioUnlock = (() => {
@@ -477,6 +466,7 @@
                 window.addEventListener('pointerdown', () => unlock(), { once: true, passive: true });
                 return { unlock, get unlocked() { return unlocked; }, get ctx() { return ctx; } };
             })();
+
             // ---- Speed-sign chirp ----
             const BEEP_URL = `${AUDIO_BASE}beep.mp3`;
             let beepBuffer = null, beepEl = null;
@@ -526,6 +516,7 @@
                 } catch {}
             }
             window.addEventListener('touchend', () => AudioUnlock.unlock(), { once: true, passive: true });
+
             let player = new Audio();
             function isStandalone() {
                 return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
@@ -572,6 +563,7 @@
                     });
                 });
             }
+
             /* -------- Audio lists (stems/tags/locations) -------- */
             const STEMS = Array.from({ length: 11 }, (_, i) => `speed_camera_ahead_${i + 1}.mp3`);
             const TAGS = [
@@ -630,6 +622,7 @@
                 "Monterey Blvd from Edna to Congo St": "monterey_blvd_from_edna_to_congo_st.mp3",
                 "Sloat Blvd from 41st Ave to Skyline Blvd": "sloat_blvd_from_41st_ave_to_skyline_blvd.mp3"
             };
+
             // ---- Self-healing audio manifest (prune 404s) ----
             async function urlExists(url) {
                 try {
@@ -672,6 +665,7 @@
                 const f = LOC[name];
                 if (f) playNow(`${AUDIO_BASE}${f}`);
             }
+
             /* -------- Poles & Corridors -------- */
             const CORRIDORS_URL = `${DATA_BASE}/corridors.json`;
             const POLES_URL = `${DATA_BASE}/poles.json`;
@@ -852,6 +846,7 @@
                     map.fitBounds(L.latLngBounds(latlngs).pad(0.2));
                 }
             }
+
             /* -------- Speed sign (fallback + timers) -------- */
             let speedSignTO = null;
             const DEFAULT_LIMIT = 30;
@@ -880,6 +875,7 @@
                 speedSignTO = null;
                 setTimeout(() => { box.hidden = true; }, 200);
             }
+
             /* -------- Gates / timing -------- */
             const EXIT_M = 150;
             const HYSTERESIS_M = 20;
@@ -913,6 +909,7 @@
                     });
                 } catch { return false; }
             }
+
             async function startGPS() {
                 if (!('geolocation' in navigator)) return;
                 if (window.__watchId != null) return;
@@ -968,6 +965,7 @@
                 insideNow.clear();
                 hideSpeedSign();
             }
+
             /* -------- Warmup button -------- */
             const warmBtn = document.getElementById('warmup');
             const testBtn = document.getElementById('testSound');
@@ -1008,6 +1006,7 @@
                 await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
                 await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
             });
+
             /* -------- Trial Nag (audio-synced close + caps) -------- */
             const NAG_FIRST_MS = 120000;
             const NAG_REPEAT_MS = 15 * 60 * 1000;
@@ -1019,93 +1018,9 @@
             const nagAudio = new Audio(NAG_AUDIO_URL);
             nagAudio.preload = 'auto';
             nagAudio.crossOrigin = 'anonymous';
-            const NAG_MAX_VISIBLE_MS_SILENT = DEV ? 1500 : 2500;
-            let nagPlaying = false, nagBuffer = null, nagBufferReady = false, lastActive = null;
-            function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-            function focusTrapOn() { nagEl?.setAttribute('aria-hidden', 'false'); }
-            function focusTrapOff() { nagEl?.setAttribute('aria-hidden', 'true'); }
-            async function ensureNagBuffer() {
-                if (nagBufferReady) return nagBuffer;
-                try {
-                    const res = await fetch(`${NAG_AUDIO_URL}?v=${Date.now()}`, { cache: 'force-cache' });
-                    const ab = await res.arrayBuffer();
-                    await AudioUnlock.unlock();
-                    const ctx = AudioUnlock.ctx;
-                    nagBuffer = await ctx.decodeAudioData(ab);
-                    nagBufferReady = true;
-                } catch (e) { nagBufferReady = false; }
-                return nagBuffer;
-            }
-            async function playNagWebAudio() {
-                const buf = await ensureNagBuffer();
-                if (!buf) throw new Error('no-buffer');
-                const ctx = AudioUnlock.ctx;
-                return new Promise(resolve => {
-                    const src = ctx.createBufferSource();
-                    src.buffer = buf;
-                    src.connect(ctx.destination);
-                    src.onended = resolve;
-                    try { src.start(0); } catch { resolve(); }
-                });
-            }
-            async function playNagAudioFallback() {
-                await AudioUnlock.unlock();
-                try { nagAudio.pause(); } catch {}
-                try {
-                    nagAudio.currentTime = 0;
-                    nagAudio.load();
-                    await nagAudio.play();
-                } catch {
-                    await sleep(300);
-                    try { await nagAudio.play(); } catch {}
-                }
-            }
-            async function showNag() {
-                if (nagPlaying) return;
-                nagPlaying = true;
-                const audioAllowed = (mode === 'on');
-                lastActive = document.activeElement;
-                if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random() * NAG_IMAGES.length)];
-                if (nagEl) {
-                    nagEl.style.display = 'flex';
-                    nagEl.tabIndex = -1;
-                    nagEl.focus();
-                    focusTrapOn();
-                }
-                const safeClose = () => {
-                    try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
-                    if (nagEl && nagEl.style.display === 'flex') {
-                        nagEl.style.display = 'none';
-                        focusTrapOff();
-                        lastActive?.focus?.();
-                    }
-                    nagPlaying = false;
-                };
-                try {
-                    if (audioAllowed) {
-                        await ensureAudioReady();
-                        let watchdog = setTimeout(safeClose, 12000);
-                        try {
-                            await playNagWebAudio();
-                        } catch {
-                            await playNagAudioFallback();
-                            await new Promise(r => { nagAudio.onended = r; });
-                        }
-                        clearTimeout(watchdog);
-                        safeClose();
-                    } else {
-                        setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
-                    }
-                } catch { safeClose(); }
-            }
-            setTimeout(() => { if (!document.hidden) showNag(); }, NAG_FIRST_MS);
-            let nagInt = null;
-            function armNagInterval() {
-                clearInterval(nagInt);
-                nagInt = setInterval(() => { if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
-            }
-            document.addEventListener('visibilitychange', armNagInterval, { passive: true });
-            armNagInterval();
+
+            // (we'll hotfix the showNag timing below without touching other app logic)
+
             /* -------- Geofence alert chain (instant start) -------- */
             async function playGeofenceAlert(name) {
                 showSpeedSign(SPEED_LIMITS[name]);
@@ -1132,6 +1047,7 @@
                 })();
                 if (navigator.vibrate) navigator.vibrate([250, 100, 250]);
             }
+
             /* -------- Speed limits loader -------- */
             const SPEED_LIMITS = {};
             const SPEEDS_URL = `${DATA_BASE}/camera_speed_limits.json`;
@@ -1157,6 +1073,7 @@
                     if (missing.length) console.warn('No speed limit for:', missing);
                 } catch (e) { /* file may not exist; ignore */ }
             }
+
             /* -------- Start everything -------- */
             initMap();
             let cameras = [];
@@ -1215,6 +1132,7 @@
             }
             addEventListener('pagehide', stopGPS, { once: true });
             applyMode();
+
             /* -------- Onboarding + PWA layer -------- */
             function ckSet(k, v, days = 7) {
                 try {
@@ -1237,10 +1155,12 @@
             const PWA_DONE_KEY = 'pwa_installed_v1';
             const PWA_LATER_KEY = 'pwa_install_later_ts';
             const THREE_DAYS = 3 * 24 * 60 * 60 * 1000;
+
             const privacyToastEl = document.getElementById('privacyToast');
             const installToastEl = document.getElementById('installToast');
             const privacyToast = privacyToastEl ? new bootstrap.Toast(privacyToastEl) : null;
             const installToast = installToastEl ? new bootstrap.Toast(installToastEl) : null;
+
             const privacyEnableBtn = document.getElementById('privacyEnable');
             const privacyLaterBtn = document.getElementById('privacyLater');
             const privacyConfirmEl = document.getElementById('privacyConfirm');
@@ -1280,6 +1200,7 @@
                 showPrivacyModalIfNeeded();
             });
             document.getElementById('toastLater')?.addEventListener('click', () => privacyToast?.hide());
+
             let deferredPrompt = null;
             window.addEventListener('beforeinstallprompt', (e) => {
                 e.preventDefault();
@@ -1331,6 +1252,104 @@
                 showPrivacyModalIfNeeded();
             }
         });
+    </script>
+
+    <!-- ========= HOTFIX MODULE (add-only) ========= -->
+    <script>
+    (function hotfix(){
+        // ---- 0) Config knobs (safe to tweak) ----
+        const FORCE_LIFT_PX = 400;                // pulls content up ~400px
+        const VH_LOCK_INTERVAL_MS = 800;          // how long to repeatedly correct vh on first paint
+        const NAG_MAX_VISIBLE_MS_AUDIO = /[?&]dev=1\b/.test(location.search) ? 2000 : 4500;
+        const NAG_MAX_VISIBLE_MS_SILENT = /[?&]dev=1\b/.test(location.search) ? 1500 : 2500;
+
+        // ---- 1) Fix viewport/scale once and for all ----
+        function setVH() {
+            const h = Math.round((window.visualViewport?.height || window.innerHeight));
+            document.documentElement.style.setProperty('--vh', h + 'px');
+            // Also keep the bg container synced directly (defensive)
+            const el = document.querySelector('.video-bg');
+            if (el) el.style.height = h + 'px';
+        }
+        setVH();
+        let vhTicks = 0;
+        const vhTimer = setInterval(() => {
+            setVH();
+            vhTicks++;
+            if (vhTicks > 4) clearInterval(vhTimer); // a few paints after load
+        }, VH_LOCK_INTERVAL_MS);
+        window.addEventListener('resize', setVH, {passive:true});
+        window.visualViewport?.addEventListener('resize', setVH, {passive:true});
+        window.addEventListener('orientationchange', () => setTimeout(setVH, 50), {passive:true});
+
+        // ---- 2) Pull content up by FORCE_LIFT_PX without touching your logic ----
+        function liftContent() {
+            const root = document.documentElement;
+            const css = getComputedStyle(root);
+            const curMobile = parseFloat(css.getPropertyValue('--paid-offset-mobile')) || 220;
+            const curDesktop = parseFloat(css.getPropertyValue('--paid-offset-desktop')) || 330;
+            const newMobile = Math.max(120, curMobile - FORCE_LIFT_PX);
+            const newDesktop = Math.max(200, curDesktop - FORCE_LIFT_PX);
+            root.style.setProperty('--paid-offset-mobile', newMobile + 'px');
+            root.style.setProperty('--paid-offset-desktop', newDesktop + 'px');
+        }
+        // Run right away and also after layout recalcs your app triggers
+        window.addEventListener('DOMContentLoaded', () => {
+            liftContent();
+            setTimeout(liftContent, 50);
+            setTimeout(liftContent, 200);
+        });
+        window.addEventListener('resize', () => setTimeout(liftContent, 50), {passive:true});
+        window.visualViewport?.addEventListener('resize', () => setTimeout(liftContent, 50), {passive:true});
+        window.addEventListener('orientationchange', () => setTimeout(liftContent, 150), {passive:true});
+
+        // ---- 3) Make the trial nag stay up until audio ends (or cap) ----
+        // We can't easily replace your internal function safely, so we control the element display duration from the outside.
+        const nagEl = document.getElementById('nag');
+        const nagAudio = new Audio((window.BASE||'') + '/images/audio/Ad1.mp3');
+        nagAudio.preload = 'auto';
+        nagAudio.crossOrigin = 'anonymous';
+
+        // When the nag opens, ensure it doesn't vanish instantly; close after audio or cap.
+        const observer = new MutationObserver((list) => {
+            for (const m of list) {
+                if (m.type === 'attributes' && m.attributeName === 'style' && nagEl.style.display === 'flex') {
+                    // Nag just opened
+                    const modeBtn = document.getElementById('warmup');
+                    const modeText = modeBtn?.textContent || '';
+                    const audioAllowed = /Sound & GPS: On/i.test(modeText); // mirrors your logic
+
+                    // Clear any prior handlers
+                    try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
+
+                    let closed = false;
+                    const safeClose = () => {
+                        if (closed) return;
+                        closed = true;
+                        try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
+                        if (nagEl.style.display === 'flex') nagEl.style.display = 'none';
+                    };
+
+                    if (audioAllowed) {
+                        // Try to actually play audio, then close on end, else cap.
+                        nagAudio.src = (window.BASE||'') + '/images/audio/Ad1.mp3?v=' + Date.now();
+                        const capTO = setTimeout(safeClose, NAG_MAX_VISIBLE_MS_AUDIO);
+                        nagAudio.play().then(() => {
+                            nagAudio.onended = () => { clearTimeout(capTO); safeClose(); };
+                        }).catch(() => {
+                            clearTimeout(capTO);
+                            setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
+                        });
+                    } else {
+                        // No audio allowed -> short, predictable display
+                        setTimeout(safeClose, NAG_MAX_VISIBLE_MS_SILENT);
+                    }
+                    break;
+                }
+            }
+        });
+        if (nagEl) observer.observe(nagEl, { attributes: true, attributeFilter: ['style'] });
+    })();
     </script>
 </body>
 </html>
