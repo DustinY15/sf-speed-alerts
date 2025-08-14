@@ -802,8 +802,8 @@
             const COOLDOWN_MS = 10000;
             const REARM_M = DEV ? 50 : 100;
             function enterDistanceM(speedMps){
-                const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 22.35; // ~50 mph
-                return Math.max(150, Math.min(450, Math.round(v * 11)));
+                const v = Number.isFinite(speedMps) && speedMps > 0 ? speedMps : 24.6; // ~55 mph fallback
+                return Math.max(250, Math.min(700, Math.round(v * 18)));
             }
             const insideNow = new Set(), lastAlertAt = new Map();
             const lastAlertPos = new Map();
