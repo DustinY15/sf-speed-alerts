@@ -4,7 +4,7 @@
     <meta charset="UTF-8"/>
     <!-- Instant, hidden redirect to clean HTTPS apex -->
     <script>
-    if (location.hostname !== 'localhost') {
+    if (location.protocol.startsWith('http') && location.hostname !== 'localhost') {
         const domain = location.hostname.replace(/^www\./, '');
         if (location.protocol !== 'https:' || location.hostname !== domain) {
             location.replace('https://' + domain + location.pathname + location.search + location.hash);
@@ -875,7 +875,7 @@
               }
               // Main tick per geolocation update
               function onPosition(pos, camerasFC){
-                if (pos?.coords?.accuracy && pos.coords.accuracy > ACCURACY_MAX_M) {
+                if (!DEV && pos?.coords?.accuracy && pos.coords.accuracy > ACCURACY_MAX_M) {
                   lastPos = pos; // still update trail/lastPos if you wish
                   return; // skip alerting when GPS is too noisy
                 }
@@ -1172,44 +1172,58 @@
             let cameras = [];
             let dataReadyResolve;
             const dataReady = new Promise(res => (dataReadyResolve = res));
+            // helper: normalize all poles to [lng, lat] + clean props
+            function normalizePolesFC(polesFC){
+              const raw = (polesFC && polesFC.type === 'FeatureCollection')
+                ? polesFC
+                : { type: 'FeatureCollection', features: Array.isArray(polesFC) ? polesFC : [] };
+
+              const features = (raw.features || []).map((f, i) => {
+                const g = f?.geometry || {};
+                let coords = g.coordinates;
+                if (!coords || coords.length !== 2) return null;
+                const [a,b] = coords;
+                const looksLatLng = Math.abs(a) <= 90 && Math.abs(b) <= 180;
+                const looksLngLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
+                if (looksLatLng && !looksLngLat) coords = [b, a]; // flip -> [lng, lat]
+
+                const p = f.properties || {};
+                const id = p.id ?? p.pole_id ?? p.name ?? f.id ?? `cam_${i}`;
+                const facing = String(p.direction ?? p.facing ?? 'BOTH').toUpperCase();
+                const speedLimit = getCameraSpeedLimit({ properties: p }); // your helper
+                return {
+                  type: 'Feature',
+                  id,
+                  properties: { ...p, id, facing, speedLimit },
+                  geometry: { type: 'Point', coordinates: coords }
+                };
+              }).filter(Boolean);
+
+              return { type: 'FeatureCollection', features };
+            }
             (async () => {
                 try {
-                    const [corrRaw, poles] = await Promise.all([fetchJSON(CORRIDORS_URL), fetchJSON(POLES_URL)]);
+                    const [corrRaw, polesRaw] = await Promise.all([fetchJSON(CORRIDORS_URL), fetchJSON(POLES_URL)]);
                     const corrPolysFC = normalizeToPolygons(corrRaw);
-                    cameras = (poles.features || [])
-                        .filter(f => f.geometry?.type === 'Point')
-                        .map(f => {
-                            const [lon, lat] = f.geometry.coordinates;
-                            return { name: f.properties?.name || 'Speed Camera', lat, lon, direction: (f.properties?.direction || 'BOTH').toUpperCase(), pole_id: f.properties?.pole_id };
-                        });
-                    const { fc: corr33, corridorForPole } = filterCorridorsToPoles(corrPolysFC, poles);
-                    addCorridors(corr33);
-                    addPoleMarkers(poles, corridorForPole);
-                    const corrCount = (corr33.features || []).length;
-                    const poleCount = (poles.features || []).length;
-                    showDebug(`Corridors: ${corrCount} • Poles: ${poleCount}`);
-                    // Set normalized CAMERAS_GEOJSON here to avoid second fetch
-                    const fc = { type: 'FeatureCollection', features: poles.features || [] };
-                    const features = (fc.features || []).map((f, i) => {
-                      const g = f?.geometry || {};
-                      let coords = g.coordinates;
-                      if (!coords || coords.length !== 2) return null;
-                      const [a,b] = coords;
-                      const looksLatLng = Math.abs(a) <= 90 && Math.abs(b) <= 180;
-                      const looksLngLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
-                      if (looksLatLng && !looksLngLat) coords = [b, a];
-                      const p = f.properties || {};
-                      const id = p.id ?? p.pole_id ?? p.name ?? f.id ?? `cam_${i}`;
-                      const facing = String(p.direction ?? p.facing ?? 'BOTH').toUpperCase();
-                      const speedLimit = getCameraSpeedLimit(f);
+                    // ✅ normalize once; use everywhere
+                    const polesFC = normalizePolesFC(polesRaw);
+                    // build the simple array used by the geofence loop
+                    cameras = (polesFC.features || []).map(f => {
+                      const [lng, lat] = f.geometry.coordinates;
                       return {
-                        type: 'Feature',
-                        id,
-                        properties: { ...p, id, facing, speedLimit },
-                        geometry: { type: 'Point', coordinates: coords }
+                        name: f.properties?.name || 'Speed Camera',
+                        lat, lon: lng,
+                        direction: (f.properties?.facing || 'BOTH').toUpperCase(),
+                        pole_id: f.properties?.pole_id
                       };
-                    }).filter(Boolean);
-                    window.CAMERAS_GEOJSON = { type: 'FeatureCollection', features };
+                    });
+                    const { fc: corr33, corridorForPole } = filterCorridorsToPoles(corrPolysFC, polesFC);
+                    addCorridors(corr33);
+                    addPoleMarkers(polesFC, corridorForPole);          // ← use normalized FC
+                    showDebug(`Corridors: ${(corr33.features||[]).length} • Poles: ${(polesFC.features||[]).length}`);
+                    // publish normalized data + rebuild KD-tree
+                    window.CAMERAS_GEOJSON = polesFC;
+                    if (window.buildCameraIndex) window.buildCameraIndex(polesFC.features);
                     await loadSpeedLimits();
                     dataReadyResolve();
                 } catch (e) {
@@ -1778,8 +1792,8 @@
             }
             function passesGates(coords){
                 const {accuracy,speed}=coords;
-                if(accuracy && accuracy>ACCURACY_MAX_M) return false;
-                if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
+                if(!DEV && accuracy && accuracy>ACCURACY_MAX_M) return false;
+                if(!DEV && typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
                 return true;
             }
             async function startGPS(){
