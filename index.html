@@ -375,11 +375,11 @@
             if (!HAS.leaflet) { showFatal('Map library failed to load.'); return; }
             // --- Safety stubs (avoid ReferenceErrors if optional pieces are missing) ---
             window.audioManifestReady = window.audioManifestReady || Promise.resolve();
-            window.buildAudioUrls    = window.buildAudioUrls    || function(){ return []; };
-            window.preloadAudioList  = window.preloadAudioList  || function(){};
-            window.playLocationOnly  = window.playLocationOnly  || function(){ AudioFX.play("beep"); };
-            window.applyMode         = window.applyMode         || function(){};
-            window.stopGPS           = window.stopGPS           || function(){ try { window.stopCameraAlerts?.(); } catch(_){} };
+            window.buildAudioUrls = window.buildAudioUrls || function(){ return []; };
+            window.preloadAudioList = window.preloadAudioList || function(){};
+            window.playLocationOnly = window.playLocationOnly || function(){ AudioFX.play("beep"); };
+            window.applyMode = window.applyMode || function(){};
+            window.stopGPS = window.stopGPS || function(){ try { window.stopCameraAlerts?.(); } catch(_){} };
             // If you later introduce a nag timer, we’ll clear it safely:
             if (typeof window.nagInt === "undefined") window.nagInt = null;
             // Fix footer & modal links to respect BASE
@@ -545,8 +545,8 @@
                   const res = await fetch(withBase(url), { cache: "reload" }).catch(()=>null);
                   if (!res || !res.ok) return;
                   const arr = await res.arrayBuffer();
-                  const buf = await ctx.decodeAudioData(arr);
-                  SFX.buffers.set(id, buf);
+                  const buf = await ctx.decodeAudioData(arr).catch(()=>null);
+                  if (buf) SFX.buffers.set(id, buf);
                 }));
                 return SFX.loading;
               }
@@ -565,7 +565,7 @@
               async function play(id, {gain=1.0, rate=1.0} = {}) {
                 try {
                   // Respect global mute and background restrictions by default.
-                  if (window.mode === 'mute') return;
+                  if (window.mode !== 'on') return;
                   const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
                   if (document.visibilityState !== 'visible' && !standalone) return;
                   const ctx = ensureCtx();
@@ -780,7 +780,7 @@
                 val.textContent = String(toShow);
                 box.hidden = false;
                 box.classList.add('show');
-                if (window.mode !== 'mute') AudioFX.play("beep");
+                if (window.mode === 'on') AudioFX.play("beep");
                 clearTimeout(speedSignTO);
                 speedSignTO = setTimeout(hideSpeedSign, SPEED_SIGN_MS);
             }
@@ -815,7 +815,6 @@
                     const s=Math.sin(dLat/2)**2+Math.cos(latA*Math.PI/180)*Math.cos(latB*Math.PI/180)*Math.sin(dLon/2)**2;
                     return R*2*Math.atan2(Math.sqrt(s),Math.sqrt(1-s))*1000;
                   };
-
               // Bearing degrees: Turf if available, else math
               const bearing = hasTurf
                 ? (a,b)=>turf.bearing(a,b)
@@ -827,26 +826,21 @@
                     const deg = (Math.atan2(y,x)*180/Math.PI + 360) % 360;
                     return deg;
                   };
-
               const diff = (a,b)=>Math.min((360+((a-b)%360))%360,(360+((b-a)%360))%360);
-
               function dynamicRadii(speedMps){
                 const enter = Math.max(CFG.baseEnterM, (speedMps||0)*10);
-                const exit  = Math.max(CFG.baseExitM, enter + 60);
+                const exit = Math.max(CFG.baseExitM, enter + 60);
                 return { ENTER_M: enter, EXIT_M: exit };
               }
-
               function facingOK(cam, lastPos, pos){
                 // If no Turf and no previous point, or facing unknown, allow.
                 const dir = String(cam.facing || cam.properties?.facing || "BOTH").toUpperCase();
                 if (dir === "BOTH") return true;
                 if (!pos) return true;
-
                 const here = { type:"Feature", geometry:{ type:"Point", coordinates:[pos.coords.longitude, pos.coords.latitude] } };
                 const prev = lastPos
                   ? { type:"Feature", geometry:{ type:"Point", coordinates:[lastPos.coords.longitude, lastPos.coords.latitude] } }
                   : here;
-
                 const drive = bearing(prev, here);
                 const nominal = ({
                   N:0, NB:0, NE:45,
@@ -857,32 +851,26 @@
                 if (nominal == null) return true;
                 return diff(drive, nominal) <= (CFG.fovDeg/2);
               }
-
               window.shouldAlertCameraPro = function(cam, lastPos, pos, speedMps){
                 if (pos?.coords?.accuracy && pos.coords.accuracy > CFG.accuracyMaxM) return false;
                 const id = cam.id ?? cam.pole_id ?? cam.name ?? JSON.stringify(cam.geometry?.coordinates);
                 if (!id) return false;
-
-                const here  = { type:"Feature", geometry:{ type:"Point", coordinates:[pos.coords.longitude, pos.coords.latitude] } };
+                const here = { type:"Feature", geometry:{ type:"Point", coordinates:[pos.coords.longitude, pos.coords.latitude] } };
                 const there = { type:"Feature", geometry:{ type:"Point", coordinates: cam.geometry?.coordinates ?? cam.coords } };
                 const d = meters(here, there);
-
                 const { ENTER_M, EXIT_M } = dynamicRadii(speedMps);
                 let s = state.get(id) || { inZone:false, lastFired:0 };
                 if (!s.inZone && d <= ENTER_M) s.inZone = true;
                 if (s.inZone && d >= EXIT_M) s.inZone = false;
-
                 const now = Date.now();
                 const cooled = (now - s.lastFired) > CFG.cooldownMs;
                 const globalCooled = (now - lastGlobalAlert) > CFG.globalCooldownMs;
                 const okFacing = facingOK(cam, lastPos, pos);
-
                 const fire = s.inZone && cooled && globalCooled && okFacing;
                 if (fire) { s.lastFired = now; lastGlobalAlert = now; }
                 state.set(id, s);
                 return fire;
               };
-
               window.__alertState = ()=>({ size: state.size });
               if (DEV) window.__alertCFG = CFG;
             })();
@@ -1207,7 +1195,7 @@
                     .openOn(map);
                 }
               } catch {}
-              if (window.mode !== 'mute') AudioFX.play("beep");
+              if (window.mode === 'on') AudioFX.play("beep");
               const txt = limit ? `Speed limit ${limit} miles per hour` : `Speed camera ahead`;
               try{ window.announce?.(txt); }catch(e){}
             }
@@ -1251,7 +1239,7 @@
                 const pos = { coords: { latitude: lat, longitude: lng } };
                 const feats = (window.CAMERAS_GEOJSON||{}).features||[];
                 if (window.findNearestCameraFast) return window.findNearestCameraFast(pos, feats);
-             
+            
                 // simple linear fallback without Turf:
                 let best = { feature:null, distM: Infinity, idx:-1 };
                 for (let i=0; i<feats.length; i++){
@@ -1281,7 +1269,6 @@
               const raw = (polesFC && polesFC.type === 'FeatureCollection')
                 ? polesFC
                 : { type: 'FeatureCollection', features: Array.isArray(polesFC) ? polesFC : [] };
-
               const features = (raw.features || []).map((f, i) => {
                 const g = f?.geometry || {};
                 let coords = g.coordinates;
@@ -1290,7 +1277,6 @@
                 const looksLatLng = Math.abs(a) <= 90 && Math.abs(b) <= 180;
                 const looksLngLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
                 if (looksLatLng && !looksLngLat) coords = [b, a]; // flip -> [lng, lat]
-
                 const p = f.properties || {};
                 const id = p.id ?? p.pole_id ?? p.name ?? f.id ?? `cam_${i}`;
                 const facing = String(p.direction ?? p.facing ?? 'BOTH').toUpperCase();
@@ -1302,7 +1288,6 @@
                   geometry: { type: 'Point', coordinates: coords }
                 };
               }).filter(Boolean);
-
               return { type: 'FeatureCollection', features };
             }
             (async () => {
@@ -1323,7 +1308,7 @@
                     });
                     const { fc: corr33, corridorForPole } = filterCorridorsToPoles(corrPolysFC, polesFC);
                     addCorridors(corr33);
-                    addPoleMarkers(polesFC, corridorForPole);          // ← use normalized FC
+                    addPoleMarkers(polesFC, corridorForPole); // ← use normalized FC
                     showDebug(`Corridors: ${(corr33.features||[]).length} • Poles: ${(polesFC.features||[]).length}`);
                     // publish normalized data + rebuild KD-tree
                     window.CAMERAS_GEOJSON = polesFC;
@@ -1340,7 +1325,53 @@
               try { window.stopGPS?.(); } catch(_) {}
               try { clearInterval(window.nagInt || 0); } catch(_) {}
             }, { once: true });
-            applyMode();
+            // --- App mode: single source of truth + safe early call ---
+            window.mode = window.mode || 'off';
+            window.applyMode = function(){
+              const btn = document.getElementById('warmup'); // may not exist yet; that's OK
+              btn?.classList.remove('btn-off','btn-on','btn-mute');
+              btn?.setAttribute('aria-pressed', String(window.mode==='on'));
+            
+              if (window.mode === 'off') {
+                btn?.classList.add('btn-off');
+                if (btn) btn.textContent = 'Sound & GPS: Off';
+                window.stopGPS?.();
+              } else if (window.mode === 'on') {
+                btn?.classList.add('btn-on');
+                if (btn) btn.textContent = 'Sound & GPS: On';
+                window.startGPS?.();      // safe: optional chaining until startGPS is defined
+              } else { // 'mute'
+                btn?.classList.add('btn-mute');
+                if (btn) btn.textContent = 'Mute: GPS Only';
+                window.startGPS?.();
+              }
+            };
+            window.applyMode();
+            /* -------- Warmup button -------- */
+            const warmBtn = document.getElementById('warmup');
+            const testBtn = document.getElementById('testSound');
+            warmBtn.addEventListener('click', async ()=>{
+                window.mode = (window.mode==='off') ? 'on' : (window.mode==='on' ? 'mute' : 'off');
+                window.applyMode();
+                (async () => {
+                    try {
+                        await AudioUnlock.unlock();
+                        if (!preloaded){
+                            preloaded=true;
+                            setTimeout(()=>preloadAudioList(buildAudioUrls(), isMobile?2:3), 150);
+                        }
+                    } catch (e) {
+                        if (DEV) console.error('Unlock failed on button:', e);
+                    }
+                })();
+            });
+            if (DEV && testBtn) testBtn.style.display = '';
+            testBtn?.addEventListener('click', async ()=>{
+                await audioManifestReady;
+                await ensureAudioReady();
+                await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
+                await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
+            });
             /* -------- Onboarding / PWA nudges -------- */
             function ckSet(k, v, days = 7) {
                 try {
@@ -1476,7 +1507,7 @@
                 return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
             }
             async function playNow(url){
-                if (window.mode === 'mute') return;
+                if (window.mode !== 'on') return;
                 if (document.visibilityState !== 'visible' && !isStandalone()) {
                     if (DEV) console.warn('Audio blocked: page hidden');
                     return;
@@ -1614,49 +1645,6 @@
                 const f=LOC[name];
                 if(f) playNow(`${AUDIO_BASE}${f}`);
             }
-            /* -------- Warmup button -------- */
-            const warmBtn = document.getElementById('warmup');
-            const testBtn = document.getElementById('testSound');
-            let mode = 'off';
-            function applyMode(){
-                window.mode = mode;
-                warmBtn.classList.remove('btn-off','btn-on','btn-mute');
-                warmBtn.setAttribute('aria-pressed', String(mode==='on'));
-                if(mode==='off'){
-                    warmBtn.classList.add('btn-off');
-                    warmBtn.textContent='Sound & GPS: Off';
-                    stopGPS();
-                }
-                if(mode==='on'){
-                    warmBtn.classList.add('btn-on');
-                    warmBtn.textContent='Sound & GPS: On';
-                    startGPS();
-                }
-                if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only'; startGPS(); }
-            }
-            let preloaded=false;
-            warmBtn.addEventListener('click', async ()=>{
-                mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
-                applyMode();
-                (async () => {
-                    try {
-                        await AudioUnlock.unlock();
-                        if (!preloaded){
-                            preloaded=true;
-                            setTimeout(()=>preloadAudioList(buildAudioUrls(), isMobile?2:3), 150);
-                        }
-                    } catch (e) {
-                        if (DEV) console.error('Unlock failed on button:', e);
-                    }
-                })();
-            });
-            if (DEV && testBtn) testBtn.style.display = '';
-            testBtn?.addEventListener('click', async ()=>{
-                await audioManifestReady;
-                await ensureAudioReady();
-                await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
-                await playNow(`${AUDIO_BASE}${pick(TAGS)}`);
-            });
             /* -------- Trial Nag (audio-synced close + caps) -------- */
             const NAG_FIRST_MS = 120000;
             const NAG_REPEAT_MS = 15*60*1000;
@@ -1681,7 +1669,7 @@
                     const ab = await res.arrayBuffer();
                     await AudioUnlock.unlock();
                     const ctx = AudioUnlock.ctx;
-                    nagBuffer = await ctx.decodeAudioData(ab);
+                    nagBuffer = await ctx.decodeAudioData(ab).catch(()=>null);
                     nagBufferReady = true;
                 }catch(e){ nagBufferReady = false; }
                 return nagBuffer;
@@ -1713,7 +1701,7 @@
             async function showNag(){
                 if (nagPlaying) return;
                 nagPlaying = true;
-                const audioAllowed = (mode === 'on');
+                const audioAllowed = (window.mode === 'on');
                 lastActive = document.activeElement;
                 if (nagImg) nagImg.src = NAG_IMAGES[Math.floor(Math.random()*NAG_IMAGES.length)];
                 if (nagEl) {
@@ -1784,7 +1772,7 @@
                     try {
                         await audioManifestReady;
                         await ensureAudioReady();
-                        if (mode === 'mute') return;
+                        if (window.mode === 'mute') return;
                         const f = LOC[name];
                         const seq = [
                             `${AUDIO_BASE}${pick(STEMS)}`,
