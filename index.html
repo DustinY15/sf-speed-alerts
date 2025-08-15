@@ -425,8 +425,6 @@
             document.querySelectorAll('a[href="/terms.html"]').forEach(a => a.href = `${BASE}/terms.html`);
             const plEl = document.getElementById('privacyLink');
             if (plEl) plEl.href = `${BASE}/privacy.html`;
-            const tlEl = document.getElementById('termsLink');
-            if (tlEl) tlEl.href = `${BASE}/terms.html`;
             // Register service worker (for PWA/offline)
             const SW_VERSION = "v19"; // bump when deploying
             if ('serviceWorker' in navigator) {
@@ -1450,20 +1448,28 @@
             
             function showTermsModal(onAccept) {
               const el = document.getElementById('termsModal');
-              if (!el) { onAccept?.(); return; } // fail-open if modal missing
+              if (!el) { onAccept?.(); return; }
+            
               document.getElementById('termsVersionLabel')?.replaceChildren(document.createTextNode(TERMS_VER));
-              const ack1 = document.getElementById('ackNotDriving');
-              const ack2 = document.getElementById('ackAgree');
-              const btn  = document.getElementById('termsAccept');
-              const enable = () => { btn.disabled = !(ack1?.checked && ack2?.checked); };
-              ack1?.addEventListener('change', enable);
-              ack2?.addEventListener('change', enable);
-              const modal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
-              btn?.addEventListener('click', () => {
-                (typeof lsSet === 'function') && lsSet(TERMS_KEY, JSON.stringify({ ver: TERMS_VER, ts: Date.now() }));
-                modal.hide();
-                onAccept?.();
-              }, { once: true });
+            
+              // Wire once
+              if (!el.dataset.wired) {
+                const ack1 = document.getElementById('ackNotDriving');
+                const ack2 = document.getElementById('ackAgree');
+                const btn  = document.getElementById('termsAccept');
+                const enable = () => { btn.disabled = !(ack1?.checked && ack2?.checked); };
+                ack1?.addEventListener('change', enable);
+                ack2?.addEventListener('change', enable);
+                enable(); // set initial state
+                btn?.addEventListener('click', () => {
+                  (typeof lsSet === 'function') && lsSet(TERMS_KEY, JSON.stringify({ ver: TERMS_VER, ts: Date.now() }));
+                  bootstrap.Modal.getInstance(el)?.hide();
+                  onAccept?.();
+                }, { once: true });
+                el.dataset.wired = '1';
+              }
+            
+              const modal = bootstrap.Modal.getOrCreateInstance(el, { backdrop: 'static', keyboard: false });
               modal.show();
             }
             const ONBOARD_KEY = 'onboard_privacy_v1';
