@@ -289,6 +289,12 @@
                         <button id="privacyEnable" class="btn btn-success btn-sm ms-auto">Enable</button>
                         <button id="privacyLater" class="btn btn-outline-light btn-sm">Not now</button>
                     </div>
+                    <div class="form-check mt-2">
+                      <input class="form-check-input" type="checkbox" id="termsAgree">
+                      <label class="form-check-label" for="termsAgree">
+                        I agree to the <a id="termsLink" href="/terms.html" target="_blank" rel="noopener">Terms & Safety Notice</a>.
+                      </label>
+                    </div>
                     <div id="privacyConfirm" class="text-success fw-bold mt-2 d-none">GPS & Sound ready ✅</div>
                 </div>
             </div>
@@ -387,8 +393,10 @@
             document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
             const plEl = document.getElementById('privacyLink');
             if (plEl) plEl.href = `${BASE}/privacy.html`;
+            const tlEl = document.getElementById('termsLink');
+            if (tlEl) tlEl.href = `${BASE}/terms.html`;
             // Register service worker (for PWA/offline)
-            const SW_VERSION = "v18"; // bump when deploying
+            const SW_VERSION = "v19"; // bump when deploying
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', async () => {
                 try {
@@ -1182,6 +1190,7 @@
               });
               return { approachPoleLayer, approachLayer };
             }
+            window.addPolesAndApproaches = addPolesAndApproaches;
             /* -------- call this instead of directly creating the popup -------- */
             function showSpeedLimitPopup(cam){
               const limit = getCameraSpeedLimit(cam);
@@ -1318,7 +1327,7 @@
                 } catch (e) {
                     dataReadyResolve();
                 }
-                await audioManifestReady;
+                await window.audioManifestReady;
                 setTimeout(() => { preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3); }, 300);
             })();
             addEventListener('pagehide', () => {
@@ -1350,6 +1359,7 @@
             /* -------- Warmup button -------- */
             const warmBtn = document.getElementById('warmup');
             const testBtn = document.getElementById('testSound');
+            let preloaded = false;
             warmBtn.addEventListener('click', async ()=>{
                 window.mode = (window.mode==='off') ? 'on' : (window.mode==='on' ? 'mute' : 'off');
                 window.applyMode();
@@ -1367,6 +1377,7 @@
             });
             if (DEV && testBtn) testBtn.style.display = '';
             testBtn?.addEventListener('click', async ()=>{
+                if (!window.AUDIO_BASE) return;
                 await audioManifestReady;
                 await ensureAudioReady();
                 await playNow(`${AUDIO_BASE}speed_camera_ahead_1.mp3`);
@@ -1416,6 +1427,10 @@
                 if (!privacyModalEl || lsGet(ONBOARD_KEY)) return;
                 const modal = new bootstrap.Modal(privacyModalEl, { backdrop: 'static', keyboard: false });
                 modal.show();
+                const agree = document.getElementById('termsAgree');
+                const setState = () => privacyEnableBtn?.toggleAttribute('disabled', !agree?.checked);
+                agree?.addEventListener('change', setState);
+                setState();
                 privacyEnableBtn?.addEventListener('click', async () => {
                     try { await AudioUnlock.unlock(); } catch {}
                     document.getElementById('warmup')?.click();
@@ -1639,7 +1654,7 @@
                 Object.assign(LOC, okLoc);
                 if (DEV) console.info('[DEV] audio manifest:', { stems: STEMS.length, tags: TAGS.length, locs: Object.keys(LOC).length });
             }
-            const audioManifestReady = pruneMissingAudio();
+            const audioManifestReady = (window.audioManifestReady = pruneMissingAudio());
             function pick(a){return a[Math.floor(Math.random()*a.length)]}
             function playLocationOnly(name){
                 const f=LOC[name];
