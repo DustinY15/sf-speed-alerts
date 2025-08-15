@@ -289,17 +289,48 @@
                         <button id="privacyEnable" class="btn btn-success btn-sm ms-auto">Enable</button>
                         <button id="privacyLater" class="btn btn-outline-light btn-sm">Not now</button>
                     </div>
-                    <div class="form-check mt-2">
-                      <input class="form-check-input" type="checkbox" id="termsAgree">
-                      <label class="form-check-label" for="termsAgree">
-                        I agree to the <a id="termsLink" href="/terms.html" target="_blank" rel="noopener">Terms & Safety Notice</a>.
-                      </label>
-                    </div>
                     <div id="privacyConfirm" class="text-success fw-bold mt-2 d-none">GPS & Sound ready ✅</div>
                 </div>
             </div>
         </div>
     </div>
+<!-- Safety & Terms Modal -->
+<div class="modal fade" id="termsModal" tabindex="-1" aria-hidden="true" aria-labelledby="termsTitle">
+  <div class="modal-dialog modal-dialog-scrollable modal-lg modal-dialog-centered">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header border-0">
+        <h5 class="modal-title" id="termsTitle">Safety Acknowledgment & Terms</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body small">
+        <div class="alert alert-warning py-2">
+          <strong>Don’t interact while driving.</strong> Use hands-free audio only.
+        </div>
+        <p><strong>Important:</strong> This app is informational. You must obey all posted signs and laws. Alerts can be delayed, inaccurate, or unavailable.</p>
+        <ul class="mb-3">
+          <li>You are responsible for safe driving and legal compliance.</li>
+          <li>Do not rely solely on the app; follow road signs and conditions.</li>
+          <li>Speed-camera warnings may be restricted in some regions; disable where prohibited.</li>
+          <li>No guarantee of accuracy, completeness, or availability.</li>
+          <li>We are not liable for tickets, fines, collisions, or other losses.</li>
+          <li>By continuing, you agree to the <a href="/terms.html" target="_blank" rel="noopener">Terms of Use</a> and <a href="/privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.</li>
+        </ul>
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="ackNotDriving">
+          <label class="form-check-label" for="ackNotDriving">I will not interact with the app while the vehicle is moving.</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" id="ackAgree">
+          <label class="form-check-label" for="ackAgree">I agree to the Safety Acknowledgment & Terms.</label>
+        </div>
+        <div class="text-secondary">Version <span id="termsVersionLabel"></span></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-primary" id="termsAccept" disabled>Accept & Enable</button>
+      </div>
+    </div>
+  </div>
+</div>
     <!-- iOS Install Modal -->
     <div class="modal fade" id="iosInstall" tabindex="-1" aria-labelledby="iosInstallLabel" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
@@ -391,6 +422,7 @@
             // Fix footer & modal links to respect BASE
             document.querySelectorAll('a[href="/privacy.html"]').forEach(a => a.href = `${BASE}/privacy.html`);
             document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
+            document.querySelectorAll('a[href="/terms.html"]').forEach(a => a.href = `${BASE}/terms.html`);
             const plEl = document.getElementById('privacyLink');
             if (plEl) plEl.href = `${BASE}/privacy.html`;
             const tlEl = document.getElementById('termsLink');
@@ -1360,20 +1392,25 @@
             const warmBtn = document.getElementById('warmup');
             const testBtn = document.getElementById('testSound');
             let preloaded = false;
-            warmBtn.addEventListener('click', async ()=>{
-                window.mode = (window.mode==='off') ? 'on' : (window.mode==='on' ? 'mute' : 'off');
+            warmBtn.addEventListener('click', async () => {
+              const next = (window.mode==='off') ? 'on' : (window.mode==='on' ? 'mute' : 'off');
+            
+              const proceed = () => {
+                window.mode = next;
                 window.applyMode();
                 (async () => {
-                    try {
-                        await AudioUnlock.unlock();
-                        if (!preloaded){
-                            preloaded=true;
-                            setTimeout(()=>preloadAudioList(buildAudioUrls(), isMobile?2:3), 150);
-                        }
-                    } catch (e) {
-                        if (DEV) console.error('Unlock failed on button:', e);
-                    }
+                  try {
+                    await AudioUnlock.unlock();
+                    if (!preloaded){ preloaded=true; setTimeout(()=>preloadAudioList(buildAudioUrls(), isMobile?2:3), 150); }
+                  } catch (e) { if (DEV) console.error('Unlock failed on button:', e); }
                 })();
+              };
+            
+              if (window.mode === 'off' && (next === 'on' || next === 'mute') && !termsAccepted()) {
+                showTermsModal(proceed);
+                return;
+              }
+              proceed();
             });
             if (DEV && testBtn) testBtn.style.display = '';
             testBtn?.addEventListener('click', async ()=>{
@@ -1401,6 +1438,34 @@
             function lsGet(k) {
                 try { const v = localStorage.getItem(k); return v == null ? ckGet(k) : v; } catch { return ckGet(k); }
             }
+            // --- Terms gating (versioned) ---
+            const TERMS_VER = "2025-01-18";     // bump when Terms text changes
+            const TERMS_KEY = "terms_accept_v1";
+            
+            function termsAccepted() {
+              const raw = (typeof lsGet === 'function') ? lsGet(TERMS_KEY) : null;
+              if (!raw) return false;
+              try { const { ver } = JSON.parse(raw); return ver === TERMS_VER; } catch { return false; }
+            }
+            
+            function showTermsModal(onAccept) {
+              const el = document.getElementById('termsModal');
+              if (!el) { onAccept?.(); return; } // fail-open if modal missing
+              document.getElementById('termsVersionLabel')?.replaceChildren(document.createTextNode(TERMS_VER));
+              const ack1 = document.getElementById('ackNotDriving');
+              const ack2 = document.getElementById('ackAgree');
+              const btn  = document.getElementById('termsAccept');
+              const enable = () => { btn.disabled = !(ack1?.checked && ack2?.checked); };
+              ack1?.addEventListener('change', enable);
+              ack2?.addEventListener('change', enable);
+              const modal = new bootstrap.Modal(el, { backdrop: 'static', keyboard: false });
+              btn?.addEventListener('click', () => {
+                (typeof lsSet === 'function') && lsSet(TERMS_KEY, JSON.stringify({ ver: TERMS_VER, ts: Date.now() }));
+                modal.hide();
+                onAccept?.();
+              }, { once: true });
+              modal.show();
+            }
             const ONBOARD_KEY = 'onboard_privacy_v1';
             const PWA_DONE_KEY = 'pwa_installed_v1';
             const PWA_LATER_KEY = 'pwa_install_later_ts';
@@ -1423,29 +1488,32 @@
                 });
             }
             function showPrivacyModalIfNeeded() {
-                const privacyModalEl = document.getElementById('privacyModal');
-                if (!privacyModalEl || lsGet(ONBOARD_KEY)) return;
-                const modal = new bootstrap.Modal(privacyModalEl, { backdrop: 'static', keyboard: false });
-                modal.show();
-                const agree = document.getElementById('termsAgree');
-                const setState = () => privacyEnableBtn?.toggleAttribute('disabled', !agree?.checked);
-                agree?.addEventListener('change', setState);
-                setState();
-                privacyEnableBtn?.addEventListener('click', async () => {
-                    try { await AudioUnlock.unlock(); } catch {}
-                    document.getElementById('warmup')?.click();
-                    lsSet(ONBOARD_KEY, '1');
-                    privacyConfirmEl?.classList.remove('d-none');
-                    setTimeout(() => {
-                        modal.hide();
-                        promptPWAInstall();
-                        maybeShowInstallNudgeSoon();
-                    }, 600);
-                }, { once: true });
-                privacyLaterBtn?.addEventListener('click', () => {
-                    modal.hide();
-                    setTimeout(() => privacyToast?.show(), 3000);
-                }, { once: true });
+              const privacyModalEl = document.getElementById('privacyModal');
+              if (!privacyModalEl || lsGet(ONBOARD_KEY)) return;
+            
+              const modal = new bootstrap.Modal(privacyModalEl, { backdrop: 'static', keyboard: false });
+              modal.show();
+            
+              privacyEnableBtn?.addEventListener('click', async () => {
+                try { await AudioUnlock.unlock(); } catch {}
+            
+                const go = () => document.getElementById('warmup')?.click();
+                if (termsAccepted()) go(); else showTermsModal(go);
+            
+                lsSet(ONBOARD_KEY, '1');
+                privacyConfirmEl?.classList.remove('d-none');
+            
+                setTimeout(() => {
+                  modal.hide();
+                  promptPWAInstall();
+                  maybeShowInstallNudgeSoon();
+                }, 600);
+              }, { once: true });
+            
+              privacyLaterBtn?.addEventListener('click', () => {
+                modal.hide();
+                setTimeout(() => privacyToast?.show(), 3000);
+              }, { once: true });
             }
             document.getElementById('toastEnable')?.addEventListener('click', () => {
                 privacyToast?.hide();
@@ -1889,6 +1957,7 @@
                 return true;
             }
             async function startGPS(){
+                if (!termsAccepted()) { showTermsModal(()=> startGPS()); return; }
                 if(!('geolocation' in navigator)) return;
                 if(window.__watchId!=null) return;
                 await dataReady;
