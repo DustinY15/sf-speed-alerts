@@ -473,7 +473,7 @@
                 window.open(STRIPE_URL, '_blank', 'noopener,noreferrer');
             });
             /* Fit BG container height (debounced) */
-            // Background sizing handled via --vhpx; no extra JS needed needed.
+            // Background sizing handled via --vhpx; no extra JS needed.
             /* -------- Debug badge + fetch wrapper -------- */
             function showDebug(msg, isErr=false){
                 let el = document.getElementById('debugBadge');
@@ -532,7 +532,8 @@
                 loading: null,
               };
               function ensureCtx() {
-                const injected = (window.AudioUnlock && window.AudioUnlock.ctx) || null;
+                // If AudioUnlock is already our own object, don't read its ctx getter (avoids recursion).
+                const injected = (window.AudioUnlock && window.AudioUnlock !== window.AudioFX && window.AudioUnlock.ctx) || null;
                 if (injected) { SFX.ctx = injected; return injected; }
                 if (!SFX.ctx) SFX.ctx = new (window.AudioContext || window.webkitAudioContext)();
                 return SFX.ctx;
@@ -563,6 +564,10 @@
               }
               async function play(id, {gain=1.0, rate=1.0} = {}) {
                 try {
+                  // Respect global mute and background restrictions by default.
+                  if (window.mode === 'mute') return;
+                  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || (navigator && navigator.standalone === true);
+                  if (document.visibilityState !== 'visible' && !standalone) return;
                   const ctx = ensureCtx();
                   if (ctx.state === "suspended") { try { await ctx.resume(); } catch(e){} }
                   if (!SFX.buffers.size) await loadAll();
@@ -578,9 +583,9 @@
               // public
               window.AudioFX = {
                 unlock, play, loadAll,
-                get ctx(){ return ensureCtx(); }  // expose a live AudioContext
+                get ctx(){ return ensureCtx(); }
               };
-              // Back-compat alias so the rest of the app keeps working
+              // Back-compat alias so existing calls to AudioUnlock keep working
               window.AudioUnlock = window.AudioUnlock || window.AudioFX;
               // auto-unlock on first tap/click
               ["pointerdown","touchstart","click"].forEach(evt=>{
@@ -1159,6 +1164,7 @@
             })();
             /* -------- visualize poles and 120m approach rays -------- */
             function addPolesAndApproaches(geojson, {offsetMeters=5}={}){
+              if (!window.turf) return null;
               const approachPoleLayer = L.layerGroup().addTo(map);
               const approachLayer = L.layerGroup().addTo(map);
               geojson.features.forEach(f=>{
@@ -1628,7 +1634,6 @@
                 }
                 if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only'; startGPS(); }
             }
-            window.applyMode = applyMode;
             let preloaded=false;
             warmBtn.addEventListener('click', async ()=>{
                 mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
@@ -1748,10 +1753,10 @@
                 } catch { safeClose(); }
             }
             setTimeout(() => { if (!document.hidden) showNag(); }, NAG_FIRST_MS);
-            let nagInt = null;
+            let nagInt = window.nagInt || null;
             function armNagInterval() {
-                clearInterval(nagInt);
-                nagInt = setInterval(() => { if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
+                clearInterval(window.nagInt || nagInt);
+                nagInt = window.nagInt = setInterval(() => { if (!document.hidden) showNag(); }, NAG_REPEAT_MS);
             }
             document.addEventListener('visibilitychange', armNagInterval, { passive: true });
             armNagInterval();
@@ -1935,6 +1940,8 @@
                 insideNow.clear();
                 hideSpeedSign();
             }
+            window.startGPS = startGPS;
+            window.stopGPS = stopGPS;
         });
     </script>
 </body>
