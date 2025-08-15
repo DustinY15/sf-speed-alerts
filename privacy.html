@@ -1,119 +1,281 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Privacy Policy - SpeedWarn.com</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 20px;
-            background: #0b0b0b;
-            color: #fff;
-            font-family: system-ui, -apple-system, Arial;
-            font-size: 16px;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        h1, h2 {
-            color: #fff;
-            font-weight: 700;
-        }
-        h1 {
-            font-size: 28px;
-            margin-bottom: 20px;
-        }
-        h2 {
-            font-size: 20px;
-            margin-top: 30px;
-            margin-bottom: 10px;
-        }
-        p {
-            margin-bottom: 15px;
-        }
-        ul {
-            margin-bottom: 15px;
-            padding-left: 20px;
-        }
-        a {
-            color: #2a6bf4;
-            text-decoration: underline;
-        }
-        footer {
-            text-align: center;
-            margin-top: 40px;
-            font-size: 14px;
-            color: #aaa;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <title>Privacy Policy — SF Speed Cameras</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="format-detection" content="telephone=no,address=no,email=no" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="manifest" id="app-manifest" href="">
+
+  <!-- Repo/base detection (matches index.html behavior) -->
+  <script>
+    (function () {
+      const REPO = 'sf-speed-alerts';
+      const path = location.pathname.replace(/\/+$/, '');
+      const onRepo = location.hostname.endsWith('github.io') && path.startsWith('/' + REPO);
+      let base = onRepo ? ('/' + REPO) : '';
+      if (!base) {
+        const parts = location.pathname.split('/');
+        const idx = parts.lastIndexOf(REPO);
+        if (idx > -1) base = '/' + parts.slice(1, idx + 1).join('/');
+      }
+      window.BASE = base;
+      const m = document.getElementById('app-manifest');
+      if (m) m.setAttribute('href', `${base}/manifest.json`);
+    })();
+  </script>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <style>
+    :root{
+      --bg:#0b0b0b;
+      --card:#141414;
+      --card-2:#161616;
+      --border:#2a2a2a;
+      --text:#ddd;          /* <-- light gray body text */
+      --text-dim:#b9b9b9;   /* secondary text */
+      --head:#fff;          /* headings */
+      --link:#8ecbff;
+      --link-hover:#b6ddff;
+      --muted:#9aa0a6;
+      --maxw: 980px;
+      --tocw: 240px;
+    }
+    html, body { height: 100%; }
+    body{
+      margin:0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a{ color: var(--link); text-decoration: none; }
+    a:hover{ color: var(--link-hover); text-decoration: underline; }
+    h1, h2, h3, h4{ color: var(--head); }
+    h1{ font-weight: 800; letter-spacing:.2px; }
+    h2{ font-weight: 700; margin-top: 2.2rem; }
+    h3{ font-weight: 700; margin-top: 1.5rem; }
+    .lead{ color: var(--text); opacity:.95; }
+    .muted{ color: var(--text-dim); }
+    .page-wrap{ max-width: var(--maxw); margin: 0 auto; padding: 24px 16px 40px; }
+    .header{
+      display:flex; align-items:center; gap:10px; margin-bottom: 10px;
+    }
+    .back{
+      display:inline-flex; gap:8px; align-items:center;
+      border:1px solid var(--border); background: transparent; color: var(--text);
+      border-radius: 10px; padding:8px 12px; text-decoration: none; font-weight:600;
+    }
+    .back:hover{ text-decoration:none; background:#0f0f0f; }
+    .shell{
+      display:grid; grid-template-columns: minmax(0,1fr);
+      gap: 24px;
+    }
+    @media (min-width: 1000px){
+      .shell{ grid-template-columns: var(--tocw) minmax(0,1fr); gap: 28px; }
+    }
+    .toc{
+      position: sticky; top: 16px;
+      border:1px solid var(--border); border-radius: 12px; background: var(--card);
+      padding: 14px 12px;
+      height: fit-content;
+    }
+    .toc h3{ margin-top: 0; font-size: 14px; letter-spacing:.03em; text-transform: uppercase; color: var(--muted); }
+    .toc a{
+      display:block; padding:8px 10px; border-radius: 8px; color: var(--text);
+    }
+    .toc a:hover{ background: #1a1a1a; text-decoration:none; }
+    .cardish{
+      border:1px solid var(--border); border-radius: 14px; background: var(--card);
+      padding: 20px;
+    }
+    .section{ scroll-margin-top: 90px; }
+    .kicker{
+      display:inline-block; font-weight:800; font-size: 12px; letter-spacing:.08em;
+      text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+    }
+    .list-tight li{ margin-bottom: .35rem; }
+    .table-dark{
+      --bs-table-bg: var(--card-2);
+      --bs-table-striped-bg: #1b1b1b;
+      --bs-table-striped-color: var(--text);
+      --bs-table-border-color: var(--border);
+      color: var(--text);
+      border-color: var(--border);
+    }
+    .note{
+      border-left:3px solid #2b6cb0; padding:10px 12px; background:#101317; color: var(--text);
+      border-radius: 8px;
+    }
+    hr{ border-color: var(--border); opacity:1; }
+    footer{ color: var(--text-dim); font-size: 13px; margin-top: 26px; text-align:center; }
+    .smallprint{ color: var(--muted); font-size: 12px; }
+    .brand{
+      display:flex; align-items:center; gap:10px; font-weight:800; letter-spacing:.2px;
+    }
+    .brand .dot{ width:10px; height:10px; border-radius:50%; background:#2a6bf4; box-shadow:0 0 0 6px rgba(42,107,244,.25); }
+    @media (prefers-reduced-motion:no-preference){
+      a{ transition: color .15s ease; }
+      .back{ transition: background .15s ease, border-color .15s ease; }
+      .toc a{ transition: background .12s ease; }
+    }
+  </style>
 </head>
 <body>
-    <h1>Privacy Policy for SpeedWarn.com</h1>
-    <p><strong>Effective Date: August 12, 2025</strong></p>
-    <p>SpeedWarn.com ("we," "us," or "our") operates the SpeedWarn.com website and related mobile web application (collectively, the "Service"). This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Service. By accessing or using the Service, you agree to this Privacy Policy. If you do not agree, please do not use the Service.</p>
-    <p>We may update this Privacy Policy from time to time. We will notify you of any changes by posting the new Privacy Policy on this page and updating the "Effective Date" above. You are advised to review this Privacy Policy periodically for any changes.</p>
+  <div class="page-wrap">
+    <div class="header">
+      <span class="brand"><span class="dot"></span> SF Speed Cameras</span>
+      <a id="backToApp" class="back ms-auto" href="#">← Back to App</a>
+    </div>
 
-    <h2>1. Information We Collect</h2>
-    <p>Our Service is designed to prioritize your privacy. We do not collect or store personal information on our servers. All processing occurs locally on your device.</p>
-    <ul>
-        <li><strong>Location Data</strong>: We access your device's GPS location solely to provide real-time alerts for nearby speed cameras. This data is processed on-device and is not transmitted to us or any third parties.</li>
-        <li><strong>Device Information</strong>: We may collect non-personal information such as your device type, browser version, and operating system to improve compatibility and performance.</li>
-        <li><strong>Usage Data</strong>: Anonymous analytics (e.g., via local storage or opt-in tools) may track app interactions to enhance the Service, but no identifiable data is collected.</li>
-        <li><strong>No Accounts or Profiles</strong>: We do not require user accounts, logins, or any form of personal identification.</li>
-    </ul>
-    <p>We do not use cookies, tracking pixels, or third-party analytics services that could identify you personally.</p>
+    <div class="shell">
+      <!-- TOC -->
+      <nav class="toc d-none d-lg-block" aria-label="Table of contents">
+        <h3>Contents</h3>
+        <a href="#what-we-process">What we process</a>
+        <a href="#what-we-dont">What we don’t collect</a>
+        <a href="#how-it-works">How it works (device)</a>
+        <a href="#pwa-cache">PWA & caching</a>
+        <a href="#payments">Payments</a>
+        <a href="#permissions">Permissions</a>
+        <a href="#data-retention">Data retention</a>
+        <a href="#your-choices">Your choices</a>
+        <a href="#contact">Contact</a>
+      </nav>
 
-    <h2>2. How We Use Your Information</h2>
-    <ul>
-        <li>To provide and maintain the Service, including generating alerts based on your location.</li>
-        <li>To improve and customize the Service based on aggregated, anonymous usage patterns.</li>
-        <li>To respond to your inquiries or support requests, if any.</li>
-    </ul>
+      <!-- Main -->
+      <main class="cardish">
+        <header class="mb-3">
+          <span class="kicker">Privacy Policy</span>
+          <h1 class="mb-2">We keep your location on your device.</h1>
+          <p class="lead mb-2">This app plays local audio alerts when you’re near a speed camera. Your GPS data is processed on the phone you’re holding—<strong>not</strong> sent to our servers.</p>
+          <div class="smallprint">Last updated: Feb 2025</div>
+        </header>
 
-    <h2>3. Disclosure of Your Information</h2>
-    <p>We do not sell, trade, or otherwise transfer your information to outside parties. We may disclose information only if required by law, such as to comply with a subpoena or similar legal process, or when we believe in good faith that disclosure is necessary to protect our rights, your safety, or the safety of others.</p>
+        <section id="what-we-process" class="section">
+          <h2>What we process</h2>
+          <p class="mb-2">Only what’s needed to trigger alerts properly:</p>
+          <div class="table-responsive">
+            <table class="table table-dark align-middle mb-3">
+              <thead><tr><th style="width:240px">Data</th><th>Used for</th><th style="width:140px">Where</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>Approx. GPS location, heading, speed (live)</td>
+                  <td>Check whether you’re entering a speed-camera zone and play an alert.</td>
+                  <td><strong>On device</strong></td>
+                </tr>
+                <tr>
+                  <td>Camera map data (static)</td>
+                  <td>Show cameras on the map; run local geofence checks.</td>
+                  <td>Stored locally / cached</td>
+                </tr>
+                <tr>
+                  <td>Audio files</td>
+                  <td>Play “beep” and optional voice prompts; may be cached for smooth playback.</td>
+                  <td>Stored locally / cached</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="note mb-0">We don’t build profiles or track you across sites. There are no ad networks.</p>
+        </section>
 
-    <h2>4. Data Security</h2>
-    <p>We implement reasonable security measures to protect any data processed on your device. However, no method of transmission over the Internet or electronic storage is 100% secure. While we strive to use commercially acceptable means to protect your information, we cannot guarantee its absolute security.</p>
+        <section id="what-we-dont" class="section">
+          <h2>What we don’t collect</h2>
+          <ul class="list-tight">
+            <li>No continuous location logs sent to us.</li>
+            <li>No account or identity data required.</li>
+            <li>No analytics unless we clearly add an <em>opt-in</em> switch later.</li>
+            <li>No advertising identifiers; no third-party ad SDKs.</li>
+          </ul>
+        </section>
 
-    <h2>5. Children's Privacy</h2>
-    <p>Our Service is not intended for use by children under the age of 13. We do not knowingly collect personal information from children under 13. If we become aware that we have collected such information, we will take steps to delete it.</p>
+        <section id="how-it-works" class="section">
+          <h2>How it works (on your device)</h2>
+          <ul class="list-tight">
+            <li>The app requests location permission to know when you’re near a camera corridor.</li>
+            <li>All checks (distance, heading, corridor polygons) are performed locally using the map data shipped with the app.</li>
+            <li>Audio is unlocked by a tap (mobile browsers requirement) and then played locally.</li>
+          </ul>
+        </section>
 
-    <h2>6. International Users</h2>
-    <p>The Service is hosted in the United States. If you access the Service from outside the United States, please be aware that your information may be transferred to, stored, and processed in the United States, where our servers are located.</p>
+        <section id="pwa-cache" class="section">
+          <h2>PWA & caching</h2>
+          <p>On supported browsers, a service worker may cache files (map tiles, JSON, audio) so the app loads fast and works better with spotty reception. You can clear this storage:</p>
+          <ul class="list-tight">
+            <li><strong>iOS Safari:</strong> Settings → Safari → Advanced → Website Data → search for our domain → Remove.</li>
+            <li><strong>Android/Chrome:</strong> Chrome Settings → Site settings → Storage → our domain → Clear &amp; reset.</li>
+          </ul>
+        </section>
 
-    <h2>7. Your Rights</h2>
-    <p>Since we do not collect or store personal data on our servers, there is no personal data for us to access, correct, or delete on your behalf. You can manage location permissions directly through your device settings.</p>
+        <section id="payments" class="section">
+          <h2>Payments</h2>
+          <p>If you purchase a Pro upgrade, checkout is handled by Stripe. We don’t receive your full card details; Stripe processes payment information directly. See Stripe’s privacy policy on their site.</p>
+          <p class="mb-0"><a href="https://stripe.com/privacy" target="_blank" rel="noopener">Read Stripe’s Privacy Policy →</a></p>
+        </section>
 
-    <h2>8. Third-Party Links</h2>
-    <p>The Service may contain links to third-party websites (e.g., Stripe for payments). We are not responsible for the privacy practices or content of these sites. We encourage you to review their privacy policies.</p>
+        <section id="permissions" class="section">
+          <h2>Permissions we ask for</h2>
+          <ul class="list-tight">
+            <li><strong>Location:</strong> Required to detect nearby cameras and trigger alerts.</li>
+            <li><strong>Audio:</strong> We request the ability to play sound; you can switch to “Mute: GPS Only.”</li>
+            <li><strong>Notifications (optional):</strong> If we add background alerts later, we’ll ask first.</li>
+          </ul>
+        </section>
 
-    <h2>9. Disclaimer of Liability, Warranties, and Legal Protections</h2>
-    <p><strong>Service Provided "As Is"</strong>: The Service is provided "as is" and "as available" without any warranties of any kind, either express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, accuracy, reliability, or non-infringement. We disclaim all warranties regarding the accuracy, timeliness, or completeness of speed camera locations, alerts, maps, or any other information provided by the Service, which may be based on user-generated or third-party data and could contain errors or omissions.<grok-card data-id="09d5c1" data-type="citation_card"></grok-card><grok-card data-id="cd1562" data-type="citation_card"></grok-card></p>
-    <p><strong>Important Disclaimer</strong>: The information provided by SpeedWarn.com, including speed camera locations, alerts, and maps, is for general informational and educational purposes only. It is based on publicly available data and may not be complete, accurate, or up-to-date. We make no representations or warranties of any kind, express or implied, about the completeness, accuracy, reliability, suitability, or availability of the information or Service.</p>
-    <p>You acknowledge and agree that your use of the Service is at your sole risk. SpeedWarn.com shall not be liable for any direct, indirect, incidental, special, consequential, or exemplary damages, including but not limited to:</p>
-    <ul>
-        <li>Speeding tickets, fines, or other legal penalties resulting from your driving behavior.</li>
-        <li>Accidents, injuries, property damage, or any consequences arising from reckless driving, distraction, or misuse of the Service while operating a vehicle.</li>
-        <li>Loss of data, profits, goodwill, or other intangible losses.</li>
-        <li>Damages from reliance on user-generated content, third-party data, or service interruptions.</li>
-    </ul>
-    <p>Our total liability to you for any claim arising out of or relating to the Service shall not exceed $1.00 (one U.S. dollar).<grok-card data-id="2e9dc1" data-type="citation_card"></grok-card></p>
-    <p>By using the Service, you agree to comply with all applicable traffic laws and drive responsibly at all times. The Service is not a substitute for safe driving practices, and you assume full responsibility for your actions. We strongly advise against using the Service in a manner that distracts from safe vehicle operation, such as interacting with alerts while driving.<grok-card data-id="b90328" data-type="citation_card"></grok-card> Use of the Service is only permitted when stopped or by a passenger.</p>
-    <p>In no event shall SpeedWarn.com, its owners, affiliates, or contributors be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the Service or the use or other dealings in the Service. This includes liability for force majeure events (e.g., GPS outages, internet failures, or third-party service disruptions).<grok-card data-id="a4cc75" data-type="citation_card"></grok-card></p>
+        <section id="data-retention" class="section">
+          <h2>Data retention</h2>
+          <p>We don’t keep server-side logs of your location. Locally cached assets remain on your device until your browser evicts them or you clear them.</p>
+        </section>
 
-    <h2>10. Indemnification</h2>
-    <p>You agree to indemnify, defend, and hold harmless SpeedWarn.com, its owners, affiliates, officers, directors, employees, agents, and contributors from and against all claims, damages, losses, liabilities, costs, and expenses (including reasonable attorneys' fees) arising out of or related to your use of the Service, violation of this Policy or applicable laws, or any content you submit or generate. This includes claims from third parties related to your driving behavior or misuse of the Service.<grok-card data-id="54d9e4" data-type="citation_card"></grok-card></p>
+        <section id="your-choices" class="section">
+          <h2>Your choices</h2>
+          <ul class="list-tight">
+            <li>Use the app without sound (mute mode) if you prefer vibration/visual only.</li>
+            <li>Disable location permissions at any time in your device settings.</li>
+            <li>Clear PWA storage to remove cached files.</li>
+          </ul>
+        </section>
 
-    <h2>11. Governing Law</h2>
-    <p>This Privacy Policy shall be governed by the laws of the State of California, United States, without regard to its conflict of law provisions. Any disputes arising from or related to the Service shall be resolved exclusively in the state or federal courts located within San Francisco County, California, and you consent to the jurisdiction of such courts.</p>
+        <section id="contact" class="section">
+          <h2>Contact</h2>
+          <p class="mb-1">Questions or requests? Reach us at <a href="mailto:speedwarnsf@gmail.com">speedwarnsf@gmail.com</a>.</p>
+          <p class="mb-0">Or use our contact form: <a id="contactLink" href="/contact.html">Contact →</a></p>
+        </section>
 
-    <h2>12. Contact Us</h2>
-    <p>If you have any questions about this Privacy Policy, please contact us at: speedwarn@gmail.com.</p>
+        <hr class="my-4">
+        <footer>
+          <small>&copy; 2025 SF Speed Cameras • <a id="homeLink" href="/">Home</a> • <a id="privacySelf" href="/privacy.html">Privacy</a> • <a id="contactSelf" href="/contact.html">Contact</a></small>
+        </footer>
+      </main>
+    </div>
+  </div>
 
-    <footer>
-        &copy; 2025 SpeedWarn.com
-    </footer>
+  <script>
+    // Adjust root-relative links to respect BASE (same helper behavior as index)
+    function withBase(url) {
+      const base = window.BASE || '';
+      if (/^https?:\/\//.test(url)) return url;
+      if (url.startsWith('/')) return `${base}${url}`;
+      return `${base}/${url}`;
+    }
+    (function fixLinks(){
+      const map = [
+        ['backToApp','/'],
+        ['homeLink','/'],
+        ['privacySelf','/privacy.html'],
+        ['contactSelf','/contact.html'],
+        ['contactLink','/contact.html']
+      ];
+      for (const [id, path] of map) {
+        const el = document.getElementById(id);
+        if (el) el.href = withBase(path);
+      }
+    })();
+  </script>
 </body>
 </html>
