@@ -342,9 +342,9 @@
         // BASE path helper
         function withBase(url) {
           const base = window.BASE || '';
-          if (/^https?:\/\//.test(url)) return url;        // absolute
+          if (/^https?:\/\//.test(url)) return url; // absolute
           if (url.startsWith('/')) return `${base}${url}`; // root-relative
-          return `${base}/${url}`;                         // plain relative
+          return `${base}/${url}`; // plain relative
         }
         window.addEventListener('DOMContentLoaded', () => {
             // Bring globals into local constants for convenience
@@ -361,7 +361,7 @@
             if ('serviceWorker' in navigator) {
               window.addEventListener('load', async () => {
                 try {
-                  const swUrl = `${BASE || ''}/sw.js`;
+                  const swUrl = `${BASE || ''}/sw.js?v=${SW_VERSION}`;
                   const reg = await navigator.serviceWorker.register(swUrl, { scope: (BASE || '/') });
                   if (reg.active) reg.update();
                   let refreshing = false;
@@ -492,6 +492,7 @@
                 ul?.setAttribute('role','listbox');
                 const dot = L.divIcon({ className:'loc-dot' });
                 userMarker = L.marker([37.7749,-122.4194],{icon:dot});
+                window.map = map;
             }
             /* -------- Audio unlock + helpers -------- */
             (() => {
@@ -744,28 +745,24 @@
             (function(){
               // Tunables
               const CFG = {
-                baseEnterM: 180,            // minimum entry radius
-                baseExitM:  240,            // minimum exit radius (>= baseEnterM)
-                fovDeg: 60,                 // approach cone width
-                cooldownMs: 2*60*1000,      // per-camera cooldown
-                globalCooldownMs: 3000,     // global "no more than 1 alert per 3s"
-                accuracyMaxM: 75           // ignore alerts if GPS accuracy worse than this
+                baseEnterM: 180, // minimum entry radius
+                baseExitM: 240, // minimum exit radius (>= baseEnterM)
+                fovDeg: 60, // approach cone width
+                cooldownMs: 2*60*1000, // per-camera cooldown
+                globalCooldownMs: 3000, // global "no more than 1 alert per 3s"
+                accuracyMaxM: ACCURACY_MAX_M // ignore alerts if GPS accuracy worse than this
               };
-
               let lastGlobalAlert = 0;
               const state = new Map(); // cameraId -> { inZone, lastFired }
-
               const meters = (a,b) => turf.distance(a,b,{units:"kilometers"})*1000;
               const bearing = (a,b) => turf.bearing(a,b);
               const diff = (a,b) => Math.min((360+((a-b)%360))%360,(360+((b-a)%360))%360);
-
               function dynamicRadii(speedMps){
                 // scale entry/exit with speed; at 50 mph (~22.35 m/s) => ~223 m entry
                 const enter = Math.max(CFG.baseEnterM, (speedMps||0)*10);
-                const exit  = Math.max(CFG.baseExitM,  enter + 60);
+                const exit = Math.max(CFG.baseExitM, enter + 60);
                 return { ENTER_M: enter, EXIT_M: exit };
               }
-
               function facingOK(cam, lastPos, pos){
                 const dir = String(cam.facing || cam.properties?.facing || "BOTH").toUpperCase();
                 if (dir === "BOTH") return true;
@@ -776,51 +773,43 @@
                 if (nominal == null) return true;
                 return diff(drive, nominal) <= (CFG.fovDeg/2);
               }
-
               window.shouldAlertCameraPro = function(cam, lastPos, pos, speedMps){
                 // accuracy guard
                 if (pos?.coords?.accuracy && pos.coords.accuracy > CFG.accuracyMaxM) return false;
-
                 const id = cam.id ?? cam.pole_id ?? cam.name ?? JSON.stringify(cam.geometry?.coordinates);
                 if (!id) return false;
-
                 const here = turf.point([pos.coords.longitude, pos.coords.latitude]);
                 const there = turf.point(cam.geometry?.coordinates ?? cam.coords);
                 const d = meters(here, there);
-
                 const { ENTER_M, EXIT_M } = dynamicRadii(speedMps);
                 let s = state.get(id) || { inZone:false, lastFired:0 };
                 if (!s.inZone && d <= ENTER_M) s.inZone = true;
-                if (s.inZone && d >= EXIT_M)  s.inZone = false;
-
+                if (s.inZone && d >= EXIT_M) s.inZone = false;
                 const now = Date.now();
                 const cooled = (now - s.lastFired) > CFG.cooldownMs;
                 const globalCooled = (now - lastGlobalAlert) > CFG.globalCooldownMs;
-
                 const okFacing = facingOK(cam, lastPos, pos);
-
                 const fire = s.inZone && cooled && globalCooled && okFacing;
                 if (fire) { s.lastFired = now; lastGlobalAlert = now; }
                 state.set(id, s);
                 return fire;
               };
-
               // Optional testing hook
-              window.__alertState = () => ({ size: state.size });
+              window.__alertState = function () { return ({ size: state.size }); };
+              if (DEV) window.__alertCFG = CFG;
             })();
             /* -------- Geolocation watch loop + nearest-camera alerting -------- */
             (function(){
               // --- config ---------------------------------------------------------------
               const OPTS = {
-                throttleMs: 800,          // reduce CPU/GPS spam
+                throttleMs: 800, // reduce CPU/GPS spam
                 highAcc: true,
                 maxAgeMs: 4000,
                 timeoutMs: 10000,
                 userMarker: { radius: 6 }, // Leaflet circleMarker style
                 nearestSearchLimit: 1000, // only consider cams within 1000 m, else skip alerting
-                drawUserTrail: false       // set true to visualize your path
+                drawUserTrail: false // set true to visualize your path
               };
-
               // --- private state --------------------------------------------------------
               let watchId = null;
               let lastPos = null;
@@ -829,7 +818,6 @@
               let userTrail = null;
               let camLayer = null; // optional highlight of nearest
               let currentNearestId = null;
-
               // Normalize a camera Feature into a plain object used by shouldAlertCamera/showSpeedLimitPopup
               function normalizeCamera(feature){
                 if (!feature) return null;
@@ -843,7 +831,6 @@
                   geometry: feature.geometry
                 };
               }
-
               // Find nearest camera to current position (linear scan; fast enough for ~hundreds of poles)
               function findNearestCamera(pos, features){
                 if (!features || !features.length) return { feature:null, distM: Infinity, idx:-1 };
@@ -858,7 +845,6 @@
                 }
                 return best;
               }
-
               // Update (or create) the user marker and trail
               function renderUser(pos){
                 const lat = pos.coords.latitude, lng = pos.coords.longitude;
@@ -873,7 +859,6 @@
                   else userTrail.addLatLng([lat,lng]);
                 }
               }
-
               // Optional: show the nearest camera as a small highlight marker
               function renderNearestHighlight(feature){
                 if (!feature) { if (camLayer) { map.removeLayer(camLayer); camLayer = null; } return; }
@@ -883,23 +868,19 @@
                   camLayer.addTo(map);
                 } else camLayer.setLatLng([lat, lng]);
               }
-
               // Main tick per geolocation update
               function onPosition(pos, camerasFC){
                 if (pos?.coords?.accuracy && pos.coords.accuracy > 75) {
                   lastPos = pos; // still update trail/lastPos if you wish
-                  return;        // skip alerting when GPS is too noisy
+                  return; // skip alerting when GPS is too noisy
                 }
                 const now = Date.now();
                 if (now - lastTick < OPTS.throttleMs) return;
                 lastTick = now;
-
                 renderUser(pos);
-
                 const NEAR = (window.findNearestCameraFast || findNearestCamera);
                 const { feature, distM } = NEAR(pos, camerasFC.features || []);
                 const camObj = normalizeCamera(feature);
-
                 // Debug overlay (SNIPPET 12)
                 const HUD = document.getElementById('debugHud');
                 window.updateDebug = (o={})=>{
@@ -915,44 +896,35 @@
                     speedMph: mph,
                   });
                 }
-
                 // Skip if nothing near enough (avoids random popups far away)
                 if (!feature || distM > OPTS.nearestSearchLimit) {
                   renderNearestHighlight(null);
                   lastPos = pos;
                   return;
                 }
-
                 renderNearestHighlight(feature);
-
                 // Decide if we should alert based on approach cone, cooldown, hysteresis
                 const fired = (window.shouldAlertCameraPro || window.shouldAlertCamera)(camObj, lastPos, pos, pos.coords.speed);
                 if (fired) {
                   // Show popup + beep (SNIPPET 2 also beeps on popupopen)
                   showSpeedLimitPopup(camObj);
-
                   // Optionally play a longer nag VO when entering the zone (uncomment if desired)
                   // const limit = getCameraSpeedLimit(camObj);
                   // if (limit !== null) AudioFX.play("nag", { gain: 0.9 });
                 }
-
                 currentNearestId = camObj?.id ?? null;
                 lastPos = pos;
               }
-
               function onError(err){
                 // Keep it quiet but available for quick diagnosis
                 console.warn("Geolocation error:", err?.code, err?.message);
               }
-
               // Public start/stop
               function startCameraAlerts(camerasGeoJSON = window.CAMERAS_GEOJSON){
                 if (!('geolocation' in navigator)) { console.warn("Geolocation not supported."); return { stop(){} }; }
                 if (!camerasGeoJSON || !camerasGeoJSON.features) { console.warn("Missing CAMERAS_GEOJSON FeatureCollection."); return { stop(){} }; }
-
                 // Warm-up Audio (SNIPPET 9 ensures load post-unlock)
                 if (window.AudioFX?.loadAll) AudioFX.loadAll();
-
                 const opts = {
                   enableHighAccuracy: OPTS.highAcc,
                   maximumAge: OPTS.maxAgeMs,
@@ -967,7 +939,6 @@
                 );
                 return { stop: stopCameraAlerts };
               }
-
               function stopCameraAlerts(){
                 if (watchId !== null) { navigator.geolocation.clearWatch(watchId); watchId = null; }
                 if (camLayer) { map.removeLayer(camLayer); camLayer = null; }
@@ -975,14 +946,12 @@
                 // if (userDot) { map.removeLayer(userDot); userDot = null; }
                 // if (userTrail) { map.removeLayer(userTrail); userTrail = null; }
               }
-
               // expose
               window.startCameraAlerts = startCameraAlerts;
-              window.stopCameraAlerts  = stopCameraAlerts;
-
+              window.stopCameraAlerts = stopCameraAlerts;
               // Optional: auto-start if you have a global CAMERAS_GEOJSON ready
               // document.addEventListener("DOMContentLoaded", ()=> {
-              //   if (window.CAMERAS_GEOJSON) startCameraAlerts(window.CAMERAS_GEOJSON);
+              // if (window.CAMERAS_GEOJSON) startCameraAlerts(window.CAMERAS_GEOJSON);
               // });
             })();
             /* -------- Load data/poles.json -> CAMERAS_GEOJSON, then start alerts -------- */
@@ -996,29 +965,24 @@
                   const res = await fetch(withBase(url), { cache: 'reload' });
                   if (!res.ok) throw new Error(`HTTP ${res.status}`);
                   const raw = await res.json();
-
                   // Normalize to FeatureCollection
                   const fc = (raw && raw.type === 'FeatureCollection')
                     ? raw
                     : { type: 'FeatureCollection', features: Array.isArray(raw) ? raw : [] };
-
                   // Clean features: id, facing, speedLimit, coords as [lng,lat]
                   const features = (fc.features || []).map((f, i) => {
                     const g = f?.geometry || {};
                     let coords = g.coordinates;
                     if (!coords || coords.length !== 2) return null;
-
                     // If likely [lat,lng], flip to [lng,lat]
                     const [a,b] = coords;
                     const looksLatLng = Math.abs(a) <= 90 && Math.abs(b) <= 180;
                     const looksLngLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
                     if (looksLatLng && !looksLngLat) coords = [b, a];
-
                     const p = f.properties || {};
                     const id = p.id ?? p.pole_id ?? p.name ?? f.id ?? `cam_${i}`;
                     const facing = String(p.direction ?? p.facing ?? 'BOTH').toUpperCase();
                     const speedLimit = getCameraSpeedLimit(f);
-
                     return {
                       type: 'Feature',
                       id,
@@ -1026,19 +990,15 @@
                       geometry: { type: 'Point', coordinates: coords }
                     };
                   }).filter(Boolean);
-
                   window.CAMERAS_GEOJSON = { type: 'FeatureCollection', features };
-
                   // Optional visualization (Snippet 5)
                   if (drawPoles && typeof window.addPolesAndApproaches === 'function') {
                     window.addPolesAndApproaches(window.CAMERAS_GEOJSON, { offsetMeters: 5 });
                   }
-
                   // Start alerts (Snippet 13)
                   if (autoStart && typeof window.startCameraAlerts === 'function') {
                     window.startCameraAlerts(window.CAMERAS_GEOJSON);
                   }
-
                   console.log(`Loaded ${features.length} cameras from ${url}`);
                 } catch (err) {
                   // try Cache API
@@ -1050,12 +1010,32 @@
                         const fc = (raw && raw.type === 'FeatureCollection')
                           ? raw
                           : { type: 'FeatureCollection', features: Array.isArray(raw) ? raw : [] };
-                        window.CAMERAS_GEOJSON = fc;
+                        // Normalize features like happy path
+                        const features = (fc.features || []).map((f, i) => {
+                          const g = f?.geometry || {};
+                          let coords = g.coordinates;
+                          if (!coords || coords.length !== 2) return null;
+                          const [a,b] = coords;
+                          const looksLatLng = Math.abs(a) <= 90 && Math.abs(b) <= 180;
+                          const looksLngLat = Math.abs(a) <= 180 && Math.abs(b) <= 90;
+                          if (looksLatLng && !looksLngLat) coords = [b, a];
+                          const p = f.properties || {};
+                          const id = p.id ?? p.pole_id ?? p.name ?? f.id ?? `cam_${i}`;
+                          const facing = String(p.direction ?? p.facing ?? 'BOTH').toUpperCase();
+                          const speedLimit = getCameraSpeedLimit(f);
+                          return {
+                            type: 'Feature',
+                            id,
+                            properties: { ...p, id, facing, speedLimit },
+                            geometry: { type: 'Point', coordinates: coords }
+                          };
+                        }).filter(Boolean);
+                        window.CAMERAS_GEOJSON = { type: 'FeatureCollection', features };
                         if (drawPoles && window.addPolesAndApproaches) {
-                          window.addPolesAndApproaches(fc, { offsetMeters: 5 });
+                          window.addPolesAndApproaches(window.CAMERAS_GEOJSON, { offsetMeters: 5 });
                         }
                         if (autoStart !== false && window.startCameraAlerts) {
-                          window.startCameraAlerts(fc);
+                          window.startCameraAlerts(window.CAMERAS_GEOJSON);
                         }
                         console.warn('Loaded cameras from Cache API fallback:', url);
                         return;
@@ -1065,10 +1045,8 @@
                   console.error('Failed to load cameras (network + cache fallback failed).');
                 }
               }
-
               // Expose for manual use
               window.loadCamerasAndStart = loadCamerasAndStart;
-
             })();
             /* -------- Spatial index for fast nearest-camera lookups (KDBush) -------- */
             (function(){
@@ -1161,7 +1139,7 @@
                 const pos = { coords: { latitude: lat, longitude: lng } };
                 const feats = (window.CAMERAS_GEOJSON||{}).features||[];
                 if (window.findNearestCameraFast) return window.findNearestCameraFast(pos, feats);
-              
+             
                 // simple linear fallback:
                 const here = turf.point([pos.coords.longitude, pos.coords.latitude]);
                 let best = { feature:null, distM: Infinity, idx:-1 };
@@ -1233,7 +1211,7 @@
                 await audioManifestReady;
                 setTimeout(() => { preloadAudioList(buildAudioUrls(), isMobile ? 2 : 3); }, 300);
             })();
-            addEventListener('pagehide', stopGPS, { once: true });
+            addEventListener('pagehide', () => { stopGPS(); clearInterval(nagInt); }, { once: true });
             applyMode();
             /* -------- Onboarding / PWA nudges -------- */
             function ckSet(k, v, days = 7) {
@@ -1374,6 +1352,9 @@
                 window.addEventListener('pointerdown', () => unlock(), { once:true, passive:true });
                 return { unlock, get unlocked(){ return unlocked; }, get ctx(){ return ctx; } };
             })();
+            if (AudioUnlock.ctx) {
+                window.AudioFX.ensureCtx = () => AudioUnlock.ctx;
+            }
             async function ensureAudioReady(){
                 try{
                     await AudioUnlock.unlock();
@@ -1548,13 +1529,19 @@
             }
             let preloaded=false;
             warmBtn.addEventListener('click', async ()=>{
-                await AudioUnlock.unlock();
-                if (!preloaded){
-                    preloaded=true;
-                    setTimeout(()=>preloadAudioList(buildAudioUrls(), isMobile?2:3), 150);
-                }
                 mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
                 applyMode();
+                (async () => {
+                    try {
+                        await AudioUnlock.unlock();
+                        if (!preloaded){
+                            preloaded=true;
+                            setTimeout(()=>preloadAudioList(buildAudioUrls(), isMobile?2:3), 150);
+                        }
+                    } catch (e) {
+                        if (DEV) console.error('Unlock failed on button:', e);
+                    }
+                })();
             });
             if (DEV && testBtn) testBtn.style.display = '';
             testBtn?.addEventListener('click', async ()=>{
@@ -1665,6 +1652,7 @@
             document.addEventListener('visibilitychange', armNagInterval, { passive: true });
             armNagInterval();
             /* -------- Geofence alert chain (instant start) -------- */
+            const ACCURACY_MAX_M = 75;
             const PREARM_EXTRA_M = 0; // keep 0 unless you want a fixed extra radius
             function headingIsOk(heading, uLat, uLon, cLat, cLon, dir){
                 // If device heading unavailable, don't block
@@ -1768,7 +1756,6 @@
             }
             const EXIT_M = 150;
             const HYSTERESIS_M = 20;
-            const MAX_ACC_M = 75;
             const MIN_SPEED_MPS = 2.2;
             const COOLDOWN_MS = 10000;
             const REARM_M = DEV ? 50 : 100;
@@ -1785,7 +1772,7 @@
             }
             function passesGates(coords){
                 const {accuracy,speed}=coords;
-                if(accuracy && accuracy>MAX_ACC_M) return false;
+                if(accuracy && accuracy>ACCURACY_MAX_M) return false;
                 if(typeof speed==='number' && speed<MIN_SPEED_MPS) return false;
                 return true;
             }
