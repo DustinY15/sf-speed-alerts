@@ -11,7 +11,7 @@
         }
     }
     </script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
     <meta name="format-detection" content="telephone=no,address=no,email=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -351,6 +351,7 @@
             const BASE = window.BASE || '';
             const DATA_BASE = `${BASE}/data`;
             const DEV = !!window.DEV;
+            const ACCURACY_MAX_M = 75;
             // Fix footer & modal links to respect BASE
             document.querySelectorAll('a[href="/privacy.html"]').forEach(a => a.href = `${BASE}/privacy.html`);
             document.querySelectorAll('a[href="/contact.html"]').forEach(a => a.href = `${BASE}/contact.html`);
@@ -466,6 +467,8 @@
                 el.style.background = isErr ? '#8b0000' : '#111';
                 el.textContent = msg;
             }
+            window.addEventListener('error', e => showDebug(e.message, true), {once:true});
+            window.addEventListener('unhandledrejection', e => showDebug(String(e.reason), true), {once:true});
             async function fetchJSON(url){
                 try{
                     const sep = url.includes('?') ? '&' : '?';
@@ -508,6 +511,8 @@
                 loading: null,
               };
               function ensureCtx() {
+                const injected = (window.AudioUnlock && window.AudioUnlock.ctx) || null;
+                if (injected) { SFX.ctx = injected; return injected; }
                 if (!SFX.ctx) SFX.ctx = new (window.AudioContext || window.webkitAudioContext)();
                 return SFX.ctx;
               }
@@ -870,7 +875,7 @@
               }
               // Main tick per geolocation update
               function onPosition(pos, camerasFC){
-                if (pos?.coords?.accuracy && pos.coords.accuracy > 75) {
+                if (pos?.coords?.accuracy && pos.coords.accuracy > ACCURACY_MAX_M) {
                   lastPos = pos; // still update trail/lastPos if you wish
                   return; // skip alerting when GPS is too noisy
                 }
@@ -991,6 +996,7 @@
                     };
                   }).filter(Boolean);
                   window.CAMERAS_GEOJSON = { type: 'FeatureCollection', features };
+                  if (window.buildCameraIndex) window.buildCameraIndex(features);
                   // Optional visualization (Snippet 5)
                   if (drawPoles && typeof window.addPolesAndApproaches === 'function') {
                     window.addPolesAndApproaches(window.CAMERAS_GEOJSON, { offsetMeters: 5 });
@@ -1031,6 +1037,7 @@
                           };
                         }).filter(Boolean);
                         window.CAMERAS_GEOJSON = { type: 'FeatureCollection', features };
+                        if (window.buildCameraIndex) window.buildCameraIndex(features);
                         if (drawPoles && window.addPolesAndApproaches) {
                           window.addPolesAndApproaches(window.CAMERAS_GEOJSON, { offsetMeters: 5 });
                         }
@@ -1652,7 +1659,6 @@
             document.addEventListener('visibilitychange', armNagInterval, { passive: true });
             armNagInterval();
             /* -------- Geofence alert chain (instant start) -------- */
-            const ACCURACY_MAX_M = 75;
             const PREARM_EXTRA_M = 0; // keep 0 unless you want a fixed extra radius
             function headingIsOk(heading, uLat, uLon, cLat, cLon, dir){
                 // If device heading unavailable, don't block
