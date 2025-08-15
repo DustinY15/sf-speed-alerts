@@ -428,7 +428,9 @@
                     if (p && p.catch) p.catch(()=> setTimeout(()=> bg.play().catch(()=>{}), 100));
                 };
                 bg.addEventListener('loadeddata', () => bg.removeAttribute('poster'), { once:true });
-                retryPlay();
+                if (!window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                    retryPlay();
+                }
             }
             /* -------- Overlay PNGs + dynamic spacing -------- */
             const ovM = document.getElementById('ovPaidSrcM');
@@ -471,19 +473,7 @@
                 window.open(STRIPE_URL, '_blank', 'noopener,noreferrer');
             });
             /* Fit BG container height (debounced) */
-            const sizeBG = () => {
-                const el=document.querySelector('.video-bg');
-                if(!el) return;
-                el.style.height = window.innerHeight + 'px';
-            };
-            let rzT;
-            const debouncedSizeBG = () => {
-                clearTimeout(rzT);
-                rzT = setTimeout(sizeBG, 100);
-            };
-            addEventListener('resize', debouncedSizeBG, { passive:true });
-            addEventListener('orientationchange', debouncedSizeBG);
-            sizeBG();
+            // Background sizing handled via --vhpx; no extra JS needed needed.
             /* -------- Debug badge + fetch wrapper -------- */
             function showDebug(msg, isErr=false){
                 let el = document.getElementById('debugBadge');
@@ -497,12 +487,13 @@
                 el.style.background = isErr ? '#8b0000' : '#111';
                 el.textContent = msg;
             }
-            window.addEventListener('error', e => showDebug(e.message, true), {once:true});
-            window.addEventListener('unhandledrejection', e => showDebug(String(e.reason), true), {once:true});
+            window.addEventListener('error', e => showDebug(e.message, true));
+            window.addEventListener('unhandledrejection', e => showDebug(String(e.reason), true));
             async function fetchJSON(url){
                 try{
-                    const sep = url.includes('?') ? '&' : '?';
-                    const r = await fetch(`${url}${sep}v=${Date.now()}`, { cache:'no-store' });
+                    const isDev = !!window.DEV;
+                    const finalUrl = isDev ? `${url}${url.includes('?') ? '&' : '?'}v=${Date.now()}` : url;
+                    const r = await fetch(finalUrl, { cache: isDev ? 'no-store' : 'default' });
                     if (!r.ok) throw new Error(`HTTP ${r.status}`);
                     return await r.json();
                 }catch(e){
@@ -585,7 +576,12 @@
                 } catch(e){ /* swallow */ }
               }
               // public
-              window.AudioFX = { unlock, play, loadAll };
+              window.AudioFX = {
+                unlock, play, loadAll,
+                get ctx(){ return ensureCtx(); }  // expose a live AudioContext
+              };
+              // Back-compat alias so the rest of the app keeps working
+              window.AudioUnlock = window.AudioUnlock || window.AudioFX;
               // auto-unlock on first tap/click
               ["pointerdown","touchstart","click"].forEach(evt=>{
                 window.addEventListener(evt, unlock, { once: true, passive: true });
@@ -775,10 +771,11 @@
                 const toShow = usingFallback ? DEFAULT_LIMIT : limit;
                 box.classList.remove('fallback','unknown');
                 box.classList.toggle('fallback', usingFallback);
+                box.classList.toggle('unknown', usingFallback);
                 val.textContent = String(toShow);
                 box.hidden = false;
                 box.classList.add('show');
-                AudioFX.play("beep");
+                if (window.mode !== 'mute') AudioFX.play("beep");
                 clearTimeout(speedSignTO);
                 speedSignTO = setTimeout(hideSpeedSign, SPEED_SIGN_MS);
             }
@@ -802,8 +799,7 @@
                 accuracyMaxM: ACCURACY_MAX_M // ignore alerts if GPS accuracy worse than this
               };
               let lastGlobalAlert = 0;
-              const state = new Map();
-
+              const state = new Map(); // cameraId -> { inZone, lastFired }
               // Distance in meters: Turf if available, else Haversine
               const meters = hasTurf
                 ? (a,b)=>turf.distance(a,b,{units:"kilometers"})*1000
@@ -847,7 +843,12 @@
                   : here;
 
                 const drive = bearing(prev, here);
-                const nominal = ({N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315})[dir];
+                const nominal = ({
+                  N:0, NB:0, NE:45,
+                  E:90, EB:90, SE:135,
+                  S:180, SB:180, SW:225,
+                  W:270, WB:270, NW:315
+                })[dir];
                 if (nominal == null) return true;
                 return diff(drive, nominal) <= (CFG.fovDeg/2);
               }
@@ -889,7 +890,7 @@
                 maxAgeMs: 4000,
                 timeoutMs: 10000,
                 userMarker: { radius: 6 }, // Leaflet circleMarker style
-                nearestSearchLimit: 1000, // only consider cams within 1000 m, else skip alerting
+                nearestSearchLimit: 1500, // only consider cams within 1500 m, else skip alerting
                 drawUserTrail: false // set true to visualize your path
               };
               // --- private state --------------------------------------------------------
@@ -1164,7 +1165,12 @@
                 const coords = f.geometry.coordinates; // [lng, lat]
                 const pt = turf.point(coords);
                 const dir = (f.properties?.facing || "BOTH").toUpperCase();
-                const bearingMap = {N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315};
+                const bearingMap = {
+                  N:0, NB:0, NE:45,
+                  E:90, EB:90, SE:135,
+                  S:180, SB:180, SW:225,
+                  W:270, WB:270, NW:315
+                };
                 // Offset 5m to the right of the approach vector (visual “roadside”)
                 const bearingDeg = bearingMap[dir] ?? 90; // default East if BOTH
                 const rightDeg = (bearingDeg + 90) % 360;
@@ -1195,7 +1201,7 @@
                     .openOn(map);
                 }
               } catch {}
-              AudioFX.play("beep");
+              if (window.mode !== 'mute') AudioFX.play("beep");
               const txt = limit ? `Speed limit ${limit} miles per hour` : `Speed camera ahead`;
               try{ window.announce?.(txt); }catch(e){}
             }
@@ -1208,6 +1214,14 @@
                 if (now - last < MIN_INTERVAL_MS) return; // skip
                 last = now;
                 _show?.(cam);
+              };
+            })();
+            (function(){
+              const MIN_MS = 3000; let last = 0;
+              const _show = showSpeedSign;
+              window.showSpeedSign = function(limit){
+                const now = Date.now(); if (now - last < MIN_MS) return;
+                last = now; _show?.(limit);
               };
             })();
             /* -------- helper to read speedLimit only if present -------- */
@@ -1599,6 +1613,7 @@
             const testBtn = document.getElementById('testSound');
             let mode = 'off';
             function applyMode(){
+                window.mode = mode;
                 warmBtn.classList.remove('btn-off','btn-on','btn-mute');
                 warmBtn.setAttribute('aria-pressed', String(mode==='on'));
                 if(mode==='off'){
@@ -1613,6 +1628,7 @@
                 }
                 if(mode==='mute'){warmBtn.classList.add('btn-mute');warmBtn.textContent='Mute: GPS Only'; startGPS(); }
             }
+            window.applyMode = applyMode;
             let preloaded=false;
             warmBtn.addEventListener('click', async ()=>{
                 mode = (mode==='off') ? 'on' : (mode==='on' ? 'mute' : 'off');
@@ -1700,6 +1716,8 @@
                     nagEl.tabIndex = -1;
                     nagEl.focus();
                     focusTrapOn();
+                    const onKey = (e)=>{ if (e.key === 'Escape') { e.stopPropagation(); safeClose(); } };
+                    nagEl.addEventListener('keydown', onKey, { once:true });
                 }
                 const safeClose = () => {
                     try { nagAudio.pause(); nagAudio.currentTime = 0; } catch {}
@@ -1720,7 +1738,7 @@
                             await playNagWebAudio();
                         } catch {
                             await playNagAudioFallback();
-                            await new Promise(r => { nagAudio.onended = r; });
+                            await new Promise(r => { nagAudio.addEventListener('ended', r, { once: true }); });
                         }
                         clearTimeout(watchdog);
                         safeClose();
